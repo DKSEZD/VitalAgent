@@ -112,6 +112,7 @@ b, strong { font-weight: 650; }
 }
 .btn:hover { text-decoration: none; transform: translateY(-1px); box-shadow: var(--shadow); background: #25333f; }
 .btn .ico { font-size: 13px; opacity: .9; }
+.btn-logo { height: 15px; width: auto; vertical-align: -2px; }
 .btn-accent { background: var(--accent); border-color: var(--accent); }
 .btn-accent:hover { background: var(--accent-deep); }
 .btn-disabled {

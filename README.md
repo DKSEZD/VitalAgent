@@ -9,6 +9,10 @@ physiological signals for reactive health question answering and proactive
 monitoring. This repository also includes **VitalBench**, the benchmark and
 evaluation pipeline used for longitudinal physiological monitoring.
 
+<p align="center">
+  <img src="docs/overview.svg" alt="VitalAgent system overview" width="900">
+</p>
+
 VitalAgent has two engines:
 
 - **Reactive engine** (query-driven): `Planner → Tools → Validation gate → LLM agent`,
