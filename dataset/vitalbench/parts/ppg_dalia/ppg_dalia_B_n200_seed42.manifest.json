@@ -1,0 +1,62 @@
+{
+  "version": "mhealth_qa_fixed_subset_v5_part",
+  "created_at": "2026-05-16T14:07:03.218875+00:00",
+  "pool_version": "v5",
+  "removed_templates": [
+    "ta8_protocol_label_id_query_current"
+  ],
+  "source_qa_jsonl": "dataset/mhealth_qa/full/ppg_dalia_all_qa.jsonl",
+  "output_jsonl": "dataset/mhealth_qa/eval_subsets/vitalbench/parts/ppg_dalia/ppg_dalia_B_n200_seed42.jsonl",
+  "question_ids_output": "dataset/mhealth_qa/eval_subsets/vitalbench/parts/ppg_dalia/ppg_dalia_B_n200_seed42.question_ids.txt",
+  "selection": {
+    "method": "per-stratum sha256(seed:question_id) ascending stratified by target",
+    "seed": "42",
+    "dataset": "ppg_dalia",
+    "tier": "B",
+    "requested_cap": 200,
+    "actual_samples": 200,
+    "stratify_by": "target"
+  },
+  "pool_summary": {
+    "sample_count": 91275,
+    "by_dataset": {
+      "ppg_dalia": 91275
+    },
+    "by_tier": {
+      "B": 91275
+    },
+    "by_question_type": {
+      "single_query": 18255,
+      "single_verify": 73020
+    },
+    "by_target": {
+      "heart_rate_excursion_threshold_monitoring_window": 73020,
+      "highest_heart_rate_numeric_monitoring_window": 18255
+    },
+    "by_template_id": {
+      "tb3_heart_rate_excursion_threshold_monitoring_window": 73020,
+      "tb4_highest_heart_rate_query_monitoring_window": 18255
+    }
+  },
+  "subset_summary": {
+    "sample_count": 200,
+    "by_dataset": {
+      "ppg_dalia": 200
+    },
+    "by_tier": {
+      "B": 200
+    },
+    "by_question_type": {
+      "single_query": 100,
+      "single_verify": 100
+    },
+    "by_target": {
+      "heart_rate_excursion_threshold_monitoring_window": 100,
+      "highest_heart_rate_numeric_monitoring_window": 100
+    },
+    "by_template_id": {
+      "tb3_heart_rate_excursion_threshold_monitoring_window": 100,
+      "tb4_highest_heart_rate_query_monitoring_window": 100
+    }
+  }
+}

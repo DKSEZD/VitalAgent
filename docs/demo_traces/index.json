@@ -1,0 +1,56 @@
+{
+  "cases": [
+    {
+      "id": "reactive_icentia11k_af",
+      "engine": "reactive",
+      "dataset": "icentia11k",
+      "modality": "ecg",
+      "title": "AF detection on raw single-lead ECG",
+      "answer_rich": true,
+      "tool_count": 2,
+      "file": "reactive_icentia11k_af.json"
+    },
+    {
+      "id": "reactive_af_ppg_ecg_af",
+      "engine": "reactive",
+      "dataset": "af_ppg_ecg",
+      "modality": "ppg",
+      "title": "AF screening on PPG with cross-signal quality gating",
+      "answer_rich": true,
+      "tool_count": 4,
+      "file": "reactive_af_ppg_ecg_af.json"
+    },
+    {
+      "id": "reactive_ppg_dalia_hr_trend",
+      "engine": "reactive",
+      "dataset": "ppg_dalia",
+      "modality": "ppg",
+      "title": "Temporal heart-rate comparison across windows",
+      "answer_rich": false,
+      "tool_count": 2,
+      "file": "reactive_ppg_dalia_hr_trend.json"
+    },
+    {
+      "id": "reactive_wesad_stress",
+      "engine": "reactive",
+      "dataset": "wesad",
+      "modality": "wearable",
+      "title": "Affective state from wearable signals",
+      "answer_rich": false,
+      "tool_count": 2,
+      "file": "reactive_wesad_stress.json"
+    },
+    {
+      "id": "proactive_af_onset",
+      "engine": "proactive",
+      "dataset": "icentia11k",
+      "modality": "ecg",
+      "title": "Continuous AF-onset monitoring on a streamed ECG segment",
+      "answer_rich": false,
+      "n_windows": 200,
+      "file": "proactive_af_onset.json"
+    }
+  ],
+  "note": "Lightweight replay traces extracted from real VitalAgent runs. No live LLM calls.",
+  "reactive_source": "results/final/full_test"
+}

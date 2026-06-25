@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>VitalAgent — Reactive &amp; Proactive Physiological Monitoring over Wearable Health Data</title>
+  <meta name="description" content="VitalAgent: a tool-augmented agent for reactive and proactive physiological monitoring over wearable ECG and PPG data. Project page with interactive demo replays." />
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="VitalAgent" />
+  <meta property="og:description" content="A tool-augmented agent for reactive and proactive physiological monitoring over wearable health data." />
+  <meta property="og:type" content="website" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css?v=3" />
+</head>
+<body>
+  <nav class="topnav">
+    <a class="brand" href="#top">Vital<span>Agent</span></a>
+    <div class="navlinks">
+      <a href="#abstract">Abstract</a>
+      <a href="#method">Method</a>
+      <a href="#results">Results</a>
+      <a href="#benchmark">VitalBench</a>
+      <a href="#demo">Demo</a>
+      <a href="#bibtex">Cite</a>
+    </div>
+  </nav>
+
+  <header id="top" class="hero">
+    <p class="venue">Preprint · <a href="https://arxiv.org/abs/2605.29483">arXiv:2605.29483</a> · cs.AI</p>
+    <h1 class="title">VitalAgent</h1>
+    <p class="subtitle">A Tool-Augmented Agent for Reactive and Proactive<br />Physiological Monitoring over Wearable Health Data</p>
+
+    <p class="authors">
+      <b>Di Zhu</b><sup>1</sup>,
+      <b>Yu Yvonne Wu</b><sup>2</sup>,
+      <b>Hong Jia</b><sup>3</sup>,
+      <b>Aaqib Saeed</b><sup>4</sup>,
+      <b>Vassilis Kostakos</b><sup>1</sup>,
+      <b>Ting Dang</b><sup>1</sup>
+    </p>
+    <p class="affil">
+      <sup>1</sup>The University of Melbourne, Australia &nbsp;·&nbsp;
+      <sup>2</sup>Dartmouth College, US &nbsp;·&nbsp;
+      <sup>3</sup>University of Auckland, New Zealand &nbsp;·&nbsp;
+      <sup>4</sup>Eindhoven University of Technology, Netherlands
+    </p>
+
+    <div class="cta">
+      <a class="btn" href="https://arxiv.org/abs/2605.29483" target="_blank" rel="noopener">
+        <span class="ico">▤</span> Paper</a>
+      <!-- Code (incl. VitalBench) lives in one repo; disabled until public -->
+      <span class="btn btn-disabled" aria-disabled="true">
+        <span class="ico">⌗</span> Code (release soon)</span>
+      <a class="btn btn-accent" href="#demo">
+        <span class="ico">▶</span> Trace Replays</a>
+    </div>
+  </header>
+
+  <main>
+    <!-- ===================== TEASER / ARCHITECTURE ===================== -->
+    <section class="band teaser">
+      <div class="arch">
+        <img src="overview.svg" alt="VitalAgent system overview: proactive and reactive pipelines sharing a unified reasoning layer and a structured tool interface." />
+      </div>
+      <p class="caption">
+        <b>Overview of VitalAgent</b>, a unified framework for reactive question
+        answering and proactive physiological monitoring via shared planning, tool
+        use, and validation.
+      </p>
+    </section>
+
+    <!-- ===================== HIGHLIGHTS ===================== -->
+    <section id="highlights" class="band">
+      <h2>Highlights</h2>
+      <div class="hl-grid">
+        <div class="hl-card">
+          <div class="hl-ico hl-ico-dual">⇄</div>
+          <h3>Unified agentic framework</h3>
+          <p>A novel and unified agentic mHealth framework supporting
+            <b>reactive question answering</b> and <b>proactive monitoring</b> via
+            shared memory and tools.</p>
+        </div>
+        <div class="hl-card">
+          <div class="hl-ico hl-ico-tool">⌗</div>
+          <h3>Tool-augmented over raw signals</h3>
+          <p>A <b>tool-augmented reasoning interface</b> that enables
+            <b>dynamic computation over raw</b> ECG/PPG <b>signals</b> — invoking
+            structured tools instead of reasoning over static summaries.</p>
+        </div>
+        <div class="hl-card">
+          <div class="hl-ico hl-ico-bench">▦</div>
+          <h3>VitalBench &amp; gains</h3>
+          <p>A longitudinal benchmark of <b>1,862 QA pairs</b> for reactive questions
+            and <b>90.2 hours</b> of data for proactive monitoring. VitalAgent
+            outperforms reactive baselines by <b>over 25%</b>.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== ABSTRACT ===================== -->
+    <section id="abstract" class="band narrow">
+      <h2>Abstract</h2>
+      <p class="abstract">
+        Wearable devices enable continuous monitoring of physiological signals
+        such as ECG and PPG, but existing mHealth systems are largely limited to
+        task-specific prediction pipelines or reactive question answering over
+        static summaries. They lack the ability to support temporal reasoning,
+        persistent physiological context, and proactive monitoring over long-term
+        signal streams. We propose <b>VitalAgent</b>, a tool-augmented agentic
+        framework for ECG/PPG-based mHealth that supports both reactive question
+        answering and proactive monitoring. VitalAgent is built on a longitudinal
+        physiological memory and a tool-augmented reasoning interface that enables
+        dynamic computation over raw signals. We further introduce
+        <b>VitalBench</b>, a longitudinal physiological monitoring benchmark
+        dataset comprising <b>1,862 QA pairs</b> for reactive question answering
+        and <b>90.2 hours</b> of continuous ECG/PPG recordings for proactive
+        monitoring, covering cardiac, physical activity, and stress-related tasks.
+        Experiments demonstrate that VitalAgent achieves <b>over 25% improvement</b>
+        over prompt-based and ReAct baselines in reactive evaluation and supports
+        proactive alert monitoring over long-term physiological signals,
+        highlighting the importance of dynamic tool use and long-term
+        physiological monitoring.
+      </p>
+    </section>
+
+    <!-- ===================== METHOD ===================== -->
+    <section id="method" class="band">
+      <h2>Method</h2>
+      <p class="lead">
+        VitalAgent is built on a longitudinal <b>physiological memory</b> and a
+        <b>tool-augmented reasoning interface</b> that enables <b>dynamic computation
+        over raw signals</b>.
+      </p>
+
+      <h3 class="sub-h3">Two operating modes</h3>
+      <div class="two-col modes-v">
+        <div class="flow-col">
+          <span class="engine-tag tag-reactive">Reactive · query-driven</span>
+          <div class="flow-steps-v">
+            <div class="flow-step">User query</div>
+            <span class="flow-arrow-v">↓</span>
+            <div class="flow-step">Planner</div>
+            <span class="flow-arrow-v">↓</span>
+            <div class="flow-step">Tools</div>
+            <span class="flow-arrow-v">↓</span>
+            <div class="flow-step">Validation</div>
+            <span class="flow-arrow-v">↓</span>
+            <div class="flow-step">Response</div>
+          </div>
+        </div>
+        <div class="flow-col">
+          <span class="engine-tag tag-proactive">Proactive · signal-driven</span>
+          <div class="flow-steps-v">
+            <div class="flow-step">Signal stream</div>
+            <span class="flow-arrow-v">↓</span>
+            <div class="flow-step">10-second windows</div>
+            <span class="flow-arrow-v">↓</span>
+            <div class="flow-step">Rule layer</div>
+            <span class="flow-arrow-v">↓</span>
+            <div class="flow-step">LLM judge</div>
+            <span class="flow-arrow-v">↓</span>
+            <div class="flow-step">Alert</div>
+          </div>
+        </div>
+      </div>
+
+      <h3 class="sub-h3">Core components</h3>
+      <div class="comp-grid">
+        <div class="comp-card">
+          <div class="comp-key">Physiological memory</div>
+          <p>A longitudinal record of three things: the history of <b>raw ECG/PPG
+            signal windows</b>, a <b>streaming health-state tracker</b> updated from
+            previously processed windows, and previous <b>proactive alert records</b>.</p>
+        </div>
+        <div class="comp-card">
+          <div class="comp-key">Unified reasoning layer</div>
+          <p>A unified policy interface of three components, shared by both modes: an
+            <b>LLM-based planner</b> for tool selection, an <b>evidence validation
+            module</b>, and an <b>LLM-based response generator</b>.</p>
+        </div>
+        <div class="comp-card">
+          <div class="comp-key">Structured tool registry</div>
+          <p>A structured tool registry <b>spanning 29 tools</b> across <b>five
+            categories</b>: signal analysis (13), data-specific processing (3),
+            record lookup, proactive context, and medical knowledge.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== RESULTS ===================== -->
+    <section id="results" class="band">
+      <h2>Results</h2>
+      <!-- Reactive table = paper Table 6, transcribed verbatim from author's LaTeX (incl. bold/underline) — confirmed.
+           VERIFY: proactive numbers below are from the arXiv fetch (Table 8) — confirm against final PDF. -->
+      <h3 class="sub-h3">Reactive question answering</h3>
+      <p class="demo-desc">
+        Accuracy on the test split (635 Tier-A + 670 Tier-B). Under the
+        <b>leakage-free</b> setting baselines compute their own states; under the
+        <b>oracle</b> setting they are additionally given numerical states
+        (label-derived states excluded). VitalAgent reads raw signals directly.
+      </p>
+      <div class="table-wrap">
+        <table class="rtab rtab-wide">
+          <thead>
+            <tr class="rtab-group">
+              <th rowspan="2">Method</th>
+              <th colspan="4">Tier A · window-local <span>(635)</span></th>
+              <th colspan="4" class="grp-b">Tier B · temporal <span>(670)</span></th>
+            </tr>
+            <tr class="rtab-sub">
+              <th>Overall</th><th>Verify</th><th>Choose</th><th>Query</th>
+              <th class="grp-b">Overall</th><th>Verify</th><th>Choose</th><th>Query</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="rtab-section"><td colspan="9">Leakage-free setting</td></tr>
+            <tr>
+              <td>Health-LLM <span class="muted">(zero-shot)</span></td>
+              <td>0.499</td><td>0.389</td><td>0.612</td><td><b>0.650</b></td>
+              <td class="grp-b">0.282</td><td>0.553</td><td>0.139</td><td><b>0.095</b></td>
+            </tr>
+            <tr>
+              <td>Health-LLM <span class="muted">(few-shot)</span></td>
+              <td>0.488</td><td>0.365</td><td>0.624</td><td>0.642</td>
+              <td class="grp-b"><b>0.300</b></td><td><b>0.561</b></td><td>0.191</td><td><b>0.095</b></td>
+            </tr>
+            <tr>
+              <td>Health-LLM <span class="muted">(few-shot CoT)</span></td>
+              <td>0.483</td><td>0.348</td><td><b>0.635</b></td><td><b>0.650</b></td>
+              <td class="grp-b">0.296</td><td>0.541</td><td><b>0.201</b></td><td><b>0.095</b></td>
+            </tr>
+            <tr>
+              <td>LifeAgent<span class="aster">*</span> <span class="muted">(tool-calling)</span></td>
+              <td><b>0.545</b></td><td><b>0.474</b></td><td>0.612</td><td><b>0.650</b></td>
+              <td class="grp-b">0.287</td><td>0.545</td><td>0.165</td><td><b>0.095</b></td>
+            </tr>
+            <tr>
+              <td>PHIA <span class="muted">(ReAct + code)</span></td>
+              <td>0.202</td><td>0.082</td><td>0.465</td><td>0.171</td>
+              <td class="grp-b">0.148</td><td>0.243</td><td>0.191</td><td>0.000</td>
+            </tr>
+            <tr class="rtab-best">
+              <td><b>VitalAgent</b> <span class="tag-ours">ours</span></td>
+              <td>0.860</td><td>0.877</td><td>0.729</td><td>0.992</td>
+              <td class="grp-b">0.557</td><td>0.741</td><td>0.443</td><td>0.443</td>
+            </tr>
+            <tr class="rtab-section"><td colspan="9">Oracle setting</td></tr>
+            <tr>
+              <td>Health-LLM <span class="muted">(zero-shot)</span></td>
+              <td>0.784</td><td>0.678</td><td>0.841</td><td><u>1.000</u></td>
+              <td class="grp-b">0.588</td><td>0.773</td><td>0.232</td><td><u>0.688</u></td>
+            </tr>
+            <tr>
+              <td>Health-LLM <span class="muted">(few-shot)</span></td>
+              <td><u>0.820</u></td><td><u>0.728</u></td><td>0.876</td><td><u>1.000</u></td>
+              <td class="grp-b">0.558</td><td>0.729</td><td>0.402</td><td>0.498</td>
+            </tr>
+            <tr>
+              <td>Health-LLM <span class="muted">(few-shot CoT)</span></td>
+              <td>0.776</td><td>0.643</td><td><u>0.882</u></td><td><u>1.000</u></td>
+              <td class="grp-b">0.496</td><td>0.627</td><td><u>0.418</u></td><td>0.412</td>
+            </tr>
+            <tr>
+              <td>LifeAgent<span class="aster">*</span> <span class="muted">(tool-calling)</span></td>
+              <td>0.819</td><td>0.725</td><td>0.876</td><td><u>1.000</u></td>
+              <td class="grp-b"><u>0.652</u></td><td><u>0.800</u></td><td><u>0.418</u></td><td><u>0.688</u></td>
+            </tr>
+            <tr>
+              <td>PHIA <span class="muted">(ReAct + code)</span></td>
+              <td>0.395</td><td>0.246</td><td>0.612</td><td>0.512</td>
+              <td class="grp-b">0.227</td><td>0.310</td><td>0.278</td><td>0.086</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="tab-note">
+        <b>Bold</b> = best under the leakage-free setting; <u>underline</u> = best
+        under the oracle setting.<br>
+        <span class="aster">*</span>Code not publicly
+        available; pipeline reproduced.
+      </p>
+
+      <h3 class="sub-h3">Proactive monitoring</h3>
+      <p class="demo-desc">
+        AF-onset monitoring over <b>90.2 hours</b> across <b>69 patients</b>.
+      </p>
+      <div class="stat-row">
+        <div class="stat"><div class="stat-num">75.5<span>%</span></div><div class="stat-lab">AF detection sensitivity</div></div>
+        <div class="stat"><div class="stat-num">66.7<span>%</span></div><div class="stat-lab">balanced accuracy</div></div>
+        <div class="stat"><div class="stat-num">105<span>s</span></div><div class="stat-lab">alert latency</div></div>
+        <div class="stat"><div class="stat-num">2.95<span>/h</span></div><div class="stat-lab">false-alert rate</div></div>
+      </div>
+      <p class="tab-note">
+        Adding the LLM judge substantially reduces median alert latency
+        (220&nbsp;s&nbsp;→&nbsp;105&nbsp;s), enabling earlier surfacing of potentially
+        relevant abnormality. Per-window AF rhythm classification achieves balanced
+        accuracy of 66.7% across both cohorts, with AF sensitivity of 75.5%.
+      </p>
+    </section>
+
+    <!-- ===================== BENCHMARK ===================== -->
+    <section id="benchmark" class="band">
+      <h2>VitalBench</h2>
+      <p class="lead">A longitudinal physiological monitoring benchmark dataset covering
+        cardiac, physical activity, and stress-related tasks.</p>
+      <div class="stat-row">
+        <div class="stat"><div class="stat-num">1,862</div><div class="stat-lab">question–answer pairs</div></div>
+        <div class="stat"><div class="stat-num">90.2<span> h</span></div><div class="stat-lab">continuous recordings</div></div>
+        <div class="stat"><div class="stat-num">29</div><div class="stat-lab">tools · 5 categories</div></div>
+        <div class="stat"><div class="stat-num">4</div><div class="stat-lab">source datasets · ECG &amp; PPG</div></div>
+      </div>
+      <div class="two-col tier-row">
+        <div class="comp-card">
+          <div class="comp-key"><span class="tier-badge">Tier A</span> Window-local</div>
+          <p><b>906</b> instantaneous questions answered from a single signal window
+            (e.g. “am I in AF right now?”, “where does my heart rate fall?”).</p>
+        </div>
+        <div class="comp-card">
+          <div class="comp-key"><span class="tier-badge">Tier B</span> Temporal</div>
+          <p><b>956</b> questions requiring aggregation across multiple windows
+            (e.g. “how often have I had AF lately?”, “is my heart rate higher than
+            before?”).</p>
+        </div>
+      </div>
+      <p class="demo-desc center muted">
+        Built from Icentia11k, AF-PPG-ECG, PPG-DaLiA, and
+        WESAD — covering cardiac, physical-activity, and stress tasks.
+      </p>
+    </section>
+
+    <!-- ===================== DEMO ===================== -->
+    <section id="demo" class="band">
+      <h2>Trace Replays</h2>
+      <p class="lead">
+        Every replay below is from <b>a real recorded run</b> — the queries,
+        tool chains, and grounded answers are preserved from recorded VitalAgent
+        outputs. <span class="muted">No live model calls are made on this page.</span>
+      </p>
+
+      <h3 class="demo-h3">Reactive question answering <span class="pill pill-reactive">Reactive</span></h3>
+      <p class="demo-desc">
+        Pick a case on the left. Each is a real recorded run — VitalAgent routes the
+        query to a tool chain over the raw signal and grounds its answer in the tool
+        outputs. Cases&nbsp;1–2 ask the <i>same</i> AF question on different signal
+        sources, and the agent picks a different tool chain for each.
+      </p>
+      <div id="demo-board" class="demo-board">
+        <div class="loading">Loading replays…</div>
+      </div>
+
+      <h3 class="demo-h3">Proactive monitoring <span class="pill pill-proactive">Proactive</span></h3>
+      <p class="demo-desc">
+        VitalAgent also replays ECG streams in a streaming-style monitoring
+        setting and flags AF-related rhythm episodes with measured detection
+        latency. Below is a ~33-minute recording played back in fast-forward: the
+        strip shows the true rhythm (green = normal, red = AF), and each flag
+        marks where VitalAgent <b>detected an AF episode</b> and how many seconds
+        it took. The goal is to catch episodes with low delay while controlling
+        false alerts.
+      </p>
+      <div id="proactive" class="proactive-wrap">
+        <div class="loading">Loading monitor…</div>
+      </div>
+    </section>
+
+    <!-- ===================== BIBTEX ===================== -->
+    <section id="bibtex" class="band narrow">
+      <h2>BibTeX</h2>
+      <div class="bibtex-wrap">
+        <button id="copy-bib" class="copy-btn" type="button">Copy</button>
+        <pre id="bibtex-block">@article{zhu2026vitalagent,
+  title   = {VitalAgent: A Tool-Augmented Agent for Reactive and Proactive
+             Physiological Monitoring over Wearable Health Data},
+  author  = {Zhu, Di and Wu, Yu Yvonne and Jia, Hong and Saeed, Aaqib
+             and Kostakos, Vassilis and Dang, Ting},
+  journal = {arXiv preprint arXiv:2605.29483},
+  year    = {2026}
+}</pre>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p>
+      Page content © the authors. Built for the VitalAgent project.
+      Demo replays are drawn from real recorded runs.
+    </p>
+  </footer>
+
+  <script src="app.js?v=3"></script>
+</body>
+</html>

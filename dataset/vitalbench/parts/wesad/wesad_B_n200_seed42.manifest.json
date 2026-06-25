@@ -1,0 +1,72 @@
+{
+  "version": "mhealth_qa_fixed_subset_v5_part",
+  "created_at": "2026-05-16T14:07:05.279730+00:00",
+  "pool_version": "v5",
+  "removed_templates": [
+    "ta8_protocol_label_id_query_current"
+  ],
+  "source_qa_jsonl": "dataset/mhealth_qa/full/wesad_all_qa.jsonl",
+  "output_jsonl": "dataset/mhealth_qa/eval_subsets/vitalbench/parts/wesad/wesad_B_n200_seed42.jsonl",
+  "question_ids_output": "dataset/mhealth_qa/eval_subsets/vitalbench/parts/wesad/wesad_B_n200_seed42.question_ids.txt",
+  "selection": {
+    "method": "per-stratum sha256(seed:question_id) ascending stratified by target",
+    "seed": "42",
+    "dataset": "wesad",
+    "tier": "B",
+    "requested_cap": 200,
+    "actual_samples": 200,
+    "stratify_by": "target"
+  },
+  "pool_summary": {
+    "sample_count": 18876,
+    "by_dataset": {
+      "wesad": 18876
+    },
+    "by_tier": {
+      "B": 18876
+    },
+    "by_question_type": {
+      "single_choose": 4719,
+      "single_query": 9438,
+      "single_verify": 4719
+    },
+    "by_target": {
+      "dominant_stress_state_monitoring_window": 4719,
+      "stress_duration_monitoring_window": 4719,
+      "stress_presence_monitoring_window": 4719,
+      "stress_ratio_monitoring_window": 4719
+    },
+    "by_template_id": {
+      "tb6_stress_presence_monitoring_window": 4719,
+      "tb7_stress_ratio_query_monitoring_window": 4719,
+      "tb8_stress_duration_query_monitoring_window": 4719,
+      "tb9_dominant_stress_state_monitoring_window": 4719
+    }
+  },
+  "subset_summary": {
+    "sample_count": 200,
+    "by_dataset": {
+      "wesad": 200
+    },
+    "by_tier": {
+      "B": 200
+    },
+    "by_question_type": {
+      "single_choose": 50,
+      "single_query": 100,
+      "single_verify": 50
+    },
+    "by_target": {
+      "dominant_stress_state_monitoring_window": 50,
+      "stress_duration_monitoring_window": 50,
+      "stress_presence_monitoring_window": 50,
+      "stress_ratio_monitoring_window": 50
+    },
+    "by_template_id": {
+      "tb6_stress_presence_monitoring_window": 50,
+      "tb7_stress_ratio_query_monitoring_window": 50,
+      "tb8_stress_duration_query_monitoring_window": 50,
+      "tb9_dominant_stress_state_monitoring_window": 50
+    }
+  }
+}

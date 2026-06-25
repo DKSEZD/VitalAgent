@@ -1,0 +1,56 @@
+{
+  "version": "vitalbench",
+  "created_at": "2026-06-18T09:41:47.391783+00:00",
+  "pool_version": "v5",
+  "removed_templates": [
+    "ta8_protocol_label_id_query_current"
+  ],
+  "output_jsonl": "dataset/mhealth_qa/eval_subsets/vitalbench/final/qa.jsonl",
+  "states_output": "dataset/mhealth_qa/eval_subsets/vitalbench/final/states.jsonl",
+  "question_ids_output": "dataset/mhealth_qa/eval_subsets/vitalbench/final/question_ids.txt",
+  "selection": {
+    "seed": "42",
+    "method": "per-dataset per-tier sha256(seed:question_id) ascending stratified by target with non-uniform v4 caps (identical to v4; PPG-DaLiA pool was regenerated against the fixed state builder so wrist-BVP hr_bpm replaces the ECG-derived label as the answer source)",
+    "datasets": [
+      "af_ppg_ecg",
+      "icentia11k",
+      "ppg_dalia",
+      "wesad"
+    ],
+    "samples_per_stratum": {
+      "af_ppg_ecg:A": 278,
+      "af_ppg_ecg:B": 278,
+      "icentia11k:A": 278,
+      "icentia11k:B": 278,
+      "ppg_dalia:A": 200,
+      "ppg_dalia:B": 200,
+      "wesad:A": 150,
+      "wesad:B": 200
+    },
+    "requested_samples_per_stratum": {
+      "af_ppg_ecg:A": 278,
+      "af_ppg_ecg:B": 278,
+      "icentia11k:A": 278,
+      "icentia11k:B": 278,
+      "ppg_dalia:A": 200,
+      "ppg_dalia:B": 200,
+      "wesad:A": 150,
+      "wesad:B": 200
+    },
+    "shortfalls": {},
+    "previous_version": "final_v4 used the same caps and seeds; vitalbench only differs because the PPG-DaLiA pool was regenerated against the fixed state builder (commit 9a9fad3) so wrist-BVP hr_bpm is now stored as state hr_bpm; the ECG reference label is kept only as ecg_reference_hr_bpm metadata, hidden from agent tools."
+  },
+  "parts": [
+    "dataset/mhealth_qa/eval_subsets/vitalbench/parts/af_ppg_ecg/af_ppg_ecg_A_n278_seed42.jsonl",
+    "dataset/mhealth_qa/eval_subsets/vitalbench/parts/af_ppg_ecg/af_ppg_ecg_B_n278_seed42.jsonl",
+    "dataset/mhealth_qa/eval_subsets/vitalbench/parts/icentia11k/icentia11k_A_n278_seed42.jsonl",
+    "dataset/mhealth_qa/eval_subsets/vitalbench/parts/icentia11k/icentia11k_B_n278_seed42.jsonl",
+    "dataset/mhealth_qa/eval_subsets/vitalbench/parts/ppg_dalia/ppg_dalia_A_n200_seed42.jsonl",
+    "dataset/mhealth_qa/eval_subsets/vitalbench/parts/ppg_dalia/ppg_dalia_B_n200_seed42.jsonl",
+    "dataset/mhealth_qa/eval_subsets/vitalbench/parts/wesad/wesad_A_n150_seed42.jsonl",
+    "dataset/mhealth_qa/eval_subsets/vitalbench/parts/wesad/wesad_B_n200_seed42.jsonl"
+  ],
+  "sample_count": 1862,
+  "unique_state_count": 1617,
+  "derived_from": "final_v5 (BVP gold preserved)"
+}

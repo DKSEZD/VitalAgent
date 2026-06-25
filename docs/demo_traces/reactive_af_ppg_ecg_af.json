@@ -1,0 +1,46 @@
+{
+  "id": "reactive_af_ppg_ecg_af",
+  "engine": "reactive",
+  "dataset": "af_ppg_ecg",
+  "modality": "ppg",
+  "title": "AF screening on PPG with cross-signal quality gating",
+  "capability": "Same AF question, different modality: a deeper tool chain with signal-quality gating and an honest low-quality hedge",
+  "question_type": "single_verify",
+  "question": "Based on the current window, am I showing signs of AF?",
+  "gold_answer": "no",
+  "answer": "No\n\n**Explanation:**  \nThe ECG-based rhythm analysis shows that while AF labels appear in about 47% of sub-windows, there is no sustained AF episode detected. The `high_confidence_sustained_af_episode_detected` field is `false`, meaning that although some AF labels are present, they are not supported by sustained high-quality signal runs — the maximum consecutive high-confidence AF sub-windows is only 2 (20 seconds), and the quality-gated coverage is 67%. The PPG rhythm irregularity assessment is also `indeterminate` due to low signal quality (score 0.502, below the 0.60 reliability threshold), and it does not confirm AF. Overall, the evidence does not meet the criteria for a confident AF-positive finding in this window.",
+  "answer_rich": true,
+  "correct": true,
+  "routing": {
+    "actual_path": "signal_query",
+    "expected_path": "raw_signal"
+  },
+  "tool_chain": [
+    {
+      "name": "assess_ppg_signal_quality",
+      "label": "Assess PPG signal quality; returns a 0-1 quality score, a label, and motion/coverage caveats."
+    },
+    {
+      "name": "analyze_pulse_rate",
+      "label": "Analyze pulse rate from PPG; returns mean/min/max pulse rate, PP-interval stats, and a bradycardia/normal/tachycardia assessment."
+    },
+    {
+      "name": "analyze_ppg_rhythm_irregularity",
+      "label": "Analyze PP-interval irregularity from PPG for irregular-pulse screening (not a definitive ECG diagnosis)."
+    },
+    {
+      "name": "evaluate_proactive_rules",
+      "label": "Replay the guideline-grounded proactive rule layer over the window; returns which clinical rules fired, the urgency tier, and citations."
+    }
+  ],
+  "stats": {
+    "input_tokens": 11644,
+    "output_tokens": 1465,
+    "elapsed_sec": 36.2
+  },
+  "source": {
+    "run": "results/final/full_test/v6_agent_tier_a_context_isolation",
+    "question_id": "ppg_patient_003_window_612__ta1_af_presence_current__p2",
+    "git_commit": "aa7f475fe3474e69d7260423186faf3dd55253a9"
+  }
+}

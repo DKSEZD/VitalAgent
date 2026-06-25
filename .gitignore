@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+
+# Environments & caches
+.venv/
+.env
+.uv-cache/
+
+# External upstream repos / large model assets (fetched on demand)
+external/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Raw datasets are not redistributed; only the built VitalBench benchmark ships.
+dataset/*
+!dataset/vitalbench/

@@ -1,0 +1,15 @@
+{
+  "version": "vitalbench",
+  "derived_from": "final_v5 (BVP gold preserved)",
+  "created_at": "2026-06-18T09:41:47.397784+00:00",
+  "final_sample_count": 1862,
+  "final_unique_state_count": 1617,
+  "dev_sample_count": 557,
+  "test_sample_count": 1305,
+  "by_dataset": {
+    "af_ppg_ecg": 556,
+    "icentia11k": 556,
+    "ppg_dalia": 400,
+    "wesad": 350
+  }
+}

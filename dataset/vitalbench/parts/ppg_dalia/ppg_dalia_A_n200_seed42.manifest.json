@@ -1,0 +1,68 @@
+{
+  "version": "mhealth_qa_fixed_subset_v5_part",
+  "created_at": "2026-05-16T14:06:59.923415+00:00",
+  "pool_version": "v5",
+  "removed_templates": [
+    "ta8_protocol_label_id_query_current"
+  ],
+  "source_qa_jsonl": "dataset/mhealth_qa/full/ppg_dalia_all_qa.jsonl",
+  "output_jsonl": "dataset/mhealth_qa/eval_subsets/vitalbench/parts/ppg_dalia/ppg_dalia_A_n200_seed42.jsonl",
+  "question_ids_output": "dataset/mhealth_qa/eval_subsets/vitalbench/parts/ppg_dalia/ppg_dalia_A_n200_seed42.question_ids.txt",
+  "selection": {
+    "method": "per-stratum sha256(seed:question_id) ascending stratified by target",
+    "seed": "42",
+    "dataset": "ppg_dalia",
+    "tier": "A",
+    "requested_cap": 200,
+    "actual_samples": 200,
+    "stratify_by": "target"
+  },
+  "pool_summary": {
+    "sample_count": 54675,
+    "by_dataset": {
+      "ppg_dalia": 54675
+    },
+    "by_tier": {
+      "A": 54675
+    },
+    "by_question_type": {
+      "single_choose": 18255,
+      "single_query": 18255,
+      "single_verify": 18165
+    },
+    "by_target": {
+      "heart_rate_category_current": 18255,
+      "heart_rate_higher_than_previous_window": 18165,
+      "heart_rate_numeric_current": 18255
+    },
+    "by_template_id": {
+      "ta2_heart_rate_category_current": 18255,
+      "ta3_heart_rate_query_current": 18255,
+      "ta4_heart_rate_higher_than_previous": 18165
+    }
+  },
+  "subset_summary": {
+    "sample_count": 200,
+    "by_dataset": {
+      "ppg_dalia": 200
+    },
+    "by_tier": {
+      "A": 200
+    },
+    "by_question_type": {
+      "single_choose": 67,
+      "single_query": 66,
+      "single_verify": 67
+    },
+    "by_target": {
+      "heart_rate_category_current": 67,
+      "heart_rate_higher_than_previous_window": 67,
+      "heart_rate_numeric_current": 66
+    },
+    "by_template_id": {
+      "ta2_heart_rate_category_current": 67,
+      "ta3_heart_rate_query_current": 66,
+      "ta4_heart_rate_higher_than_previous": 67
+    }
+  }
+}

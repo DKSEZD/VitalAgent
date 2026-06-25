@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VitalBench Live Monitor</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./style.css">
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+    <div class="bg-orb orb-primary"></div>
+    <div class="bg-orb orb-secondary"></div>
+    <div class="app-container">
+        <aside class="sidebar">
+            <header class="sidebar-header">
+                <div class="logo-container">
+                    <span class="logo-icon" aria-hidden="true">
+                        <svg viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M2.5 15.5h4l2-7.5 3.2 13 2.5-8.5 1.6 3.5h6.2"/>
+                        </svg>
+                    </span>
+                    <div><h1>VitalBench Live</h1><p>Proactive + Reactive ECG Agent</p></div>
+                </div>
+            </header>
+
+            <div class="sidebar-content">
+                <section class="glass-panel session-panel">
+                    <div class="section-title">Monitoring session</div>
+                    <label class="field-label" for="patient-input">Patient</label>
+                    <input id="patient-input" class="text-input" value="01182" autocomplete="off">
+                    <label class="field-label" for="segments-input">Segments</label>
+                    <input id="segments-input" class="text-input" value="00,01" autocomplete="off">
+                    <label class="field-label" for="speed-select">Replay speed</label>
+                    <select id="speed-select" class="custom-select">
+                        <option value="1">1×</option>
+                        <option value="30" selected>30×</option>
+                        <option value="60">60×</option>
+                    </select>
+                    <button id="start-btn" class="action-btn primary-btn w-full">Start monitoring</button>
+                    <div class="control-grid">
+                        <button id="pause-btn" class="action-btn secondary-btn">Pause</button>
+                        <button id="resume-btn" class="action-btn secondary-btn">Resume</button>
+                        <button id="next-btn" class="action-btn secondary-btn">⏭ Next alert</button>
+                        <button id="stop-btn" class="action-btn danger-btn">Stop</button>
+                    </div>
+                    <p id="session-note" class="helper-text">Start a session to stream ECG windows.</p>
+                </section>
+
+                <section class="alert-section">
+                    <div class="section-title section-title-split"><span>Alert feed</span><span id="alert-count">0</span></div>
+                    <div id="alert-feed" class="alert-feed">
+                        <p class="empty-state">No alerts yet.</p>
+                    </div>
+                </section>
+
+                <section class="examples-section">
+                    <div class="section-title">Ask about the live cursor</div>
+                    <div class="examples-list">
+                        <button class="example-btn">What is my heart rate right now?</button>
+                        <button class="example-btn">Why did I just receive an alert?</button>
+                        <button class="example-btn">What rhythm is this recent segment showing?</button>
+                        <button class="example-btn">Is the current signal quality reliable?</button>
+                    </div>
+                </section>
+
+                <section class="disclaimer-alert">
+                    <i data-lucide="triangle-alert"></i>
+                    <p><strong>Demo only.</strong> Cursor anchoring is prompt-level best effort. This is not a diagnosis or a substitute for clinical care.</p>
+                </section>
+            </div>
+        </aside>
+
+        <main class="monitor-main">
+            <section class="monitor-header glass-panel">
+                <div class="status-row">
+                    <span id="status-time">00:00:00 / --:--:--</span>
+                    <span id="status-percent">?%</span>
+                    <span id="status-speed">30×</span>
+                    <span id="status-state" class="state-pill">IDLE</span>
+                    <span id="status-segment">seg —</span>
+                </div>
+                <div class="progress-track"><div id="progress-fill" class="progress-fill"></div></div>
+            </section>
+
+            <section class="ecg-card glass-panel">
+                <div class="card-heading">
+                    <div><span class="live-dot"></span><span id="strip-mode">Latest analyzed window</span></div>
+                    <div class="strip-meta"><span id="strip-vitals">HR — · Rhythm —</span><button id="resume-live-btn" class="mini-btn hidden">Resume live</button></div>
+                </div>
+                <canvas id="ecg-canvas" aria-label="Latest analyzed ECG window"></canvas>
+            </section>
+
+            <section class="chat-card glass-panel">
+                <div id="chat-window" class="chat-window">
+                    <div class="message assistant-msg welcome-msg">
+                        <div class="avatar"><i data-lucide="activity"></i></div>
+                        <div class="msg-content">
+                            <h3>Live monitoring is ready</h3>
+                            <p>Start a session, watch proactive alerts arrive, and ask questions grounded at the latest analyzed ECG window.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="input-area-wrapper">
+                    <div class="input-glass-container">
+                        <textarea id="message-input" placeholder="Ask about the current monitoring cursor…" rows="1"></textarea>
+                        <button id="send-btn" class="send-btn" disabled title="Send"><i data-lucide="send"></i></button>
+                    </div>
+                    <div class="chat-actions"><button id="clear-btn" class="text-btn">Clear chat</button><span>Answers may be inaccurate; verify medical information.</span></div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.7/dist/purify.min.js"></script>
+    <script src="./script.js"></script>
+</body>
+</html>

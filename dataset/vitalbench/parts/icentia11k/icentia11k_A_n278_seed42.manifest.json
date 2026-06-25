@@ -1,0 +1,76 @@
+{
+  "version": "mhealth_qa_fixed_subset_v5_part",
+  "created_at": "2026-05-16T14:06:56.707536+00:00",
+  "pool_version": "v5",
+  "removed_templates": [
+    "ta8_protocol_label_id_query_current"
+  ],
+  "source_qa_jsonl": "dataset/mhealth_qa/full/icentia11k_provisional_qa.jsonl",
+  "output_jsonl": "dataset/mhealth_qa/eval_subsets/vitalbench/parts/icentia11k/icentia11k_A_n278_seed42.jsonl",
+  "question_ids_output": "dataset/mhealth_qa/eval_subsets/vitalbench/parts/icentia11k/icentia11k_A_n278_seed42.question_ids.txt",
+  "selection": {
+    "method": "per-stratum sha256(seed:question_id) ascending stratified by target",
+    "seed": "42",
+    "dataset": "icentia11k",
+    "tier": "A",
+    "requested_cap": 278,
+    "actual_samples": 278,
+    "stratify_by": "target"
+  },
+  "pool_summary": {
+    "sample_count": 7731,
+    "by_dataset": {
+      "icentia11k": 7731
+    },
+    "by_tier": {
+      "A": 7731
+    },
+    "by_question_type": {
+      "single_choose": 1785,
+      "single_query": 1785,
+      "single_verify": 4161
+    },
+    "by_target": {
+      "af_presence_current": 1467,
+      "heart_rate_category_current": 1785,
+      "heart_rate_higher_than_previous_window": 1485,
+      "heart_rate_numeric_current": 1785,
+      "rhythm_changed_from_previous_window": 1209
+    },
+    "by_template_id": {
+      "ta1_af_presence_current": 1467,
+      "ta2_heart_rate_category_current": 1785,
+      "ta3_heart_rate_query_current": 1785,
+      "ta4_heart_rate_higher_than_previous": 1485,
+      "ta5_rhythm_changed_from_previous": 1209
+    }
+  },
+  "subset_summary": {
+    "sample_count": 278,
+    "by_dataset": {
+      "icentia11k": 278
+    },
+    "by_tier": {
+      "A": 278
+    },
+    "by_question_type": {
+      "single_choose": 56,
+      "single_query": 55,
+      "single_verify": 167
+    },
+    "by_target": {
+      "af_presence_current": 56,
+      "heart_rate_category_current": 56,
+      "heart_rate_higher_than_previous_window": 56,
+      "heart_rate_numeric_current": 55,
+      "rhythm_changed_from_previous_window": 55
+    },
+    "by_template_id": {
+      "ta1_af_presence_current": 56,
+      "ta2_heart_rate_category_current": 56,
+      "ta3_heart_rate_query_current": 55,
+      "ta4_heart_rate_higher_than_previous": 56,
+      "ta5_rhythm_changed_from_previous": 55
+    }
+  }
+}

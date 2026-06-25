@@ -1,0 +1,236 @@
+{
+  "version": "vitalbench_dev_test_split",
+  "created_at": "2026-06-18T09:41:47.393783+00:00",
+  "source_manifest": {
+    "version": "vitalbench",
+    "created_at": "2026-06-18T09:41:47.391783+00:00",
+    "pool_version": "v5",
+    "removed_templates": [
+      "ta8_protocol_label_id_query_current"
+    ],
+    "output_jsonl": "dataset/mhealth_qa/eval_subsets/vitalbench/final/qa.jsonl",
+    "states_output": "dataset/mhealth_qa/eval_subsets/vitalbench/final/states.jsonl",
+    "question_ids_output": "dataset/mhealth_qa/eval_subsets/vitalbench/final/question_ids.txt",
+    "selection": {
+      "seed": "42",
+      "method": "per-dataset per-tier sha256(seed:question_id) ascending stratified by target with non-uniform v4 caps (identical to v4; PPG-DaLiA pool was regenerated against the fixed state builder so wrist-BVP hr_bpm replaces the ECG-derived label as the answer source)",
+      "datasets": [
+        "af_ppg_ecg",
+        "icentia11k",
+        "ppg_dalia",
+        "wesad"
+      ],
+      "samples_per_stratum": {
+        "af_ppg_ecg:A": 278,
+        "af_ppg_ecg:B": 278,
+        "icentia11k:A": 278,
+        "icentia11k:B": 278,
+        "ppg_dalia:A": 200,
+        "ppg_dalia:B": 200,
+        "wesad:A": 150,
+        "wesad:B": 200
+      },
+      "requested_samples_per_stratum": {
+        "af_ppg_ecg:A": 278,
+        "af_ppg_ecg:B": 278,
+        "icentia11k:A": 278,
+        "icentia11k:B": 278,
+        "ppg_dalia:A": 200,
+        "ppg_dalia:B": 200,
+        "wesad:A": 150,
+        "wesad:B": 200
+      },
+      "shortfalls": {},
+      "previous_version": "final_v4 used the same caps and seeds; vitalbench only differs because the PPG-DaLiA pool was regenerated against the fixed state builder (commit 9a9fad3) so wrist-BVP hr_bpm is now stored as state hr_bpm; the ECG reference label is kept only as ecg_reference_hr_bpm metadata, hidden from agent tools."
+    },
+    "parts": [
+      "dataset/mhealth_qa/eval_subsets/vitalbench/parts/af_ppg_ecg/af_ppg_ecg_A_n278_seed42.jsonl",
+      "dataset/mhealth_qa/eval_subsets/vitalbench/parts/af_ppg_ecg/af_ppg_ecg_B_n278_seed42.jsonl",
+      "dataset/mhealth_qa/eval_subsets/vitalbench/parts/icentia11k/icentia11k_A_n278_seed42.jsonl",
+      "dataset/mhealth_qa/eval_subsets/vitalbench/parts/icentia11k/icentia11k_B_n278_seed42.jsonl",
+      "dataset/mhealth_qa/eval_subsets/vitalbench/parts/ppg_dalia/ppg_dalia_A_n200_seed42.jsonl",
+      "dataset/mhealth_qa/eval_subsets/vitalbench/parts/ppg_dalia/ppg_dalia_B_n200_seed42.jsonl",
+      "dataset/mhealth_qa/eval_subsets/vitalbench/parts/wesad/wesad_A_n150_seed42.jsonl",
+      "dataset/mhealth_qa/eval_subsets/vitalbench/parts/wesad/wesad_B_n200_seed42.jsonl"
+    ],
+    "sample_count": 1862,
+    "unique_state_count": 1617,
+    "derived_from": "final_v5 (BVP gold preserved)"
+  },
+  "source_qa_jsonl": "dataset/mhealth_qa/eval_subsets/vitalbench/final/qa.jsonl",
+  "source_states_jsonl": "dataset/mhealth_qa/eval_subsets/vitalbench/final/states.jsonl",
+  "dev_ratio": 0.3,
+  "seed": "dev_test_split_v3",
+  "method": "stratified by dataset+tier; dev count is floor(stratum_size * dev_ratio); dev slots filled by sha256(seed:question_id) ascending",
+  "splits": {
+    "dev": {
+      "sample_count": 557,
+      "by_tier": {
+        "A": 271,
+        "B": 286
+      },
+      "by_dataset_tier": {
+        "af_ppg_ecg:A": 83,
+        "af_ppg_ecg:B": 83,
+        "icentia11k:A": 83,
+        "icentia11k:B": 83,
+        "ppg_dalia:A": 60,
+        "ppg_dalia:B": 60,
+        "wesad:A": 45,
+        "wesad:B": 60
+      },
+      "qa_jsonl": "dataset/mhealth_qa/eval_subsets/vitalbench/final/dev/qa.jsonl",
+      "states_jsonl": "dataset/mhealth_qa/eval_subsets/vitalbench/final/dev/states.jsonl",
+      "question_ids": "dataset/mhealth_qa/eval_subsets/vitalbench/final/dev/question_ids.txt",
+      "unique_state_count": 525
+    },
+    "test": {
+      "sample_count": 1305,
+      "by_tier": {
+        "A": 635,
+        "B": 670
+      },
+      "by_dataset_tier": {
+        "af_ppg_ecg:A": 195,
+        "af_ppg_ecg:B": 195,
+        "icentia11k:A": 195,
+        "icentia11k:B": 195,
+        "ppg_dalia:A": 140,
+        "ppg_dalia:B": 140,
+        "wesad:A": 105,
+        "wesad:B": 140
+      },
+      "qa_jsonl": "dataset/mhealth_qa/eval_subsets/vitalbench/final/test/qa.jsonl",
+      "states_jsonl": "dataset/mhealth_qa/eval_subsets/vitalbench/final/test/states.jsonl",
+      "question_ids": "dataset/mhealth_qa/eval_subsets/vitalbench/final/test/question_ids.txt",
+      "unique_state_count": 1173
+    }
+  },
+  "strata": {
+    "af_ppg_ecg:A": {
+      "total": 278,
+      "target_dev_count": 83,
+      "dev_count": 83,
+      "test_count": 195
+    },
+    "af_ppg_ecg:B": {
+      "total": 278,
+      "target_dev_count": 83,
+      "dev_count": 83,
+      "test_count": 195
+    },
+    "icentia11k:A": {
+      "total": 278,
+      "target_dev_count": 83,
+      "dev_count": 83,
+      "test_count": 195
+    },
+    "icentia11k:B": {
+      "total": 278,
+      "target_dev_count": 83,
+      "dev_count": 83,
+      "test_count": 195
+    },
+    "ppg_dalia:A": {
+      "total": 200,
+      "target_dev_count": 60,
+      "dev_count": 60,
+      "test_count": 140
+    },
+    "ppg_dalia:B": {
+      "total": 200,
+      "target_dev_count": 60,
+      "dev_count": 60,
+      "test_count": 140
+    },
+    "wesad:A": {
+      "total": 150,
+      "target_dev_count": 45,
+      "dev_count": 45,
+      "test_count": 105
+    },
+    "wesad:B": {
+      "total": 200,
+      "target_dev_count": 60,
+      "dev_count": 60,
+      "test_count": 140
+    }
+  },
+  "swap_log": [
+    {
+      "swapped_at": "2026-05-16T14:07:09.342670+00:00",
+      "reason": "v5 leakage repair: 33 test items had been inspected during dev iteration",
+      "method": "1:1 strata-preserving swap; dev replacements chosen by sha256(swap_seed:question_id) ascending from uninspected dev pool",
+      "swap_seed": "leakage_repair_v3",
+      "inspected_question_count": 50,
+      "moved_test_to_dev_count": 27,
+      "moved_dev_to_test_count": 27,
+      "by_dataset_tier": {
+        "af_ppg_ecg:A": 10,
+        "icentia11k:A": 5,
+        "ppg_dalia:A": 7,
+        "wesad:A": 5
+      },
+      "moved_test_to_dev": [
+        "icentia11k_patient_00012_segment_49_samples_0_450000_window_4__ta3_heart_rate_query_current__p1",
+        "icentia11k_patient_00500_segment_00_samples_0_450000_window_0__ta3_heart_rate_query_current__p2",
+        "icentia11k_patient_00500_segment_00_samples_0_450000_window_5__ta4_heart_rate_higher_than_previous__min_delta_bpm5p0__p0",
+        "icentia11k_patient_01182_segment_33_samples_0_450000_window_0__ta3_heart_rate_query_current__p0",
+        "icentia11k_patient_04500_segment_17_samples_0_450000_window_4__ta1_af_presence_current__p1",
+        "ppg_dalia_subject_S13_30s_clean_window_0023__ta4_heart_rate_higher_than_previous__min_delta_bpm5p0__p2",
+        "ppg_dalia_subject_S15_30s_clean_window_0096__ta2_heart_rate_category_current__p0",
+        "ppg_dalia_subject_S1_60s_clean_window_0092__ta2_heart_rate_category_current__p0",
+        "ppg_dalia_subject_S4_30s_clean_window_0027__ta4_heart_rate_higher_than_previous__min_delta_bpm5p0__p0",
+        "ppg_dalia_subject_S5_30s_clean_window_0134__ta4_heart_rate_higher_than_previous__min_delta_bpm5p0__p1",
+        "ppg_dalia_subject_S7_60s_clean_window_0047__ta2_heart_rate_category_current__p0",
+        "ppg_dalia_subject_S8_30s_clean_window_0023__ta4_heart_rate_higher_than_previous__min_delta_bpm5p0__p2",
+        "ppg_patient_001_window_528__ta5_rhythm_changed_from_previous__p1",
+        "ppg_patient_003_window_1457__ta5_rhythm_changed_from_previous__p1",
+        "ppg_patient_005_window_1391__ta5_rhythm_changed_from_previous__p0",
+        "ppg_patient_005_window_604__ta3_heart_rate_query_current__p0",
+        "ppg_patient_005_window_627__ta4_heart_rate_higher_than_previous__min_delta_bpm5p0__p0",
+        "ppg_patient_007_window_126__ta5_rhythm_changed_from_previous__p2",
+        "ppg_patient_007_window_731__ta1_af_presence_current__p2",
+        "ppg_patient_009_window_1328__ta1_af_presence_current__p2",
+        "ppg_patient_010_window_892__ta5_rhythm_changed_from_previous__p1",
+        "ppg_patient_011_window_240__ta5_rhythm_changed_from_previous__p2",
+        "wesad_subject_S10_30s_clean_window_0037__ta7_stress_state_current__p0",
+        "wesad_subject_S16_30s_clean_window_0005__ta9_stress_changed_from_previous__p1",
+        "wesad_subject_S2_30s_clean_window_0008__ta7_stress_state_current__p0",
+        "wesad_subject_S7_30s_clean_window_0046__ta7_stress_state_current__p0",
+        "wesad_subject_S9_30s_clean_window_0024__ta6_stress_presence_current__p2"
+      ],
+      "moved_dev_to_test": [
+        "icentia11k_patient_00992_segment_00_samples_0_450000_window_2__ta5_rhythm_changed_from_previous__p0",
+        "icentia11k_patient_01612_segment_33_samples_0_450000_window_1__ta5_rhythm_changed_from_previous__p1",
+        "icentia11k_patient_02500_segment_17_samples_0_450000_window_5__ta2_heart_rate_category_current__p2",
+        "icentia11k_patient_05413_segment_00_samples_0_450000_window_4__ta5_rhythm_changed_from_previous__p2",
+        "icentia11k_patient_06500_segment_00_samples_0_450000_window_3__ta1_af_presence_current__p0",
+        "ppg_dalia_subject_S10_30s_clean_window_0156__ta3_heart_rate_query_current__p1",
+        "ppg_dalia_subject_S10_60s_clean_window_0026__ta2_heart_rate_category_current__p2",
+        "ppg_dalia_subject_S12_60s_clean_window_0034__ta2_heart_rate_category_current__p2",
+        "ppg_dalia_subject_S15_30s_clean_window_0089__ta4_heart_rate_higher_than_previous__min_delta_bpm5p0__p2",
+        "ppg_dalia_subject_S5_30s_clean_window_0114__ta3_heart_rate_query_current__p2",
+        "ppg_dalia_subject_S9_30s_clean_window_0028__ta2_heart_rate_category_current__p2",
+        "ppg_dalia_subject_S9_60s_clean_window_0002__ta3_heart_rate_query_current__p2",
+        "ppg_patient_001_window_842__ta3_heart_rate_query_current__p0",
+        "ppg_patient_003_window_612__ta1_af_presence_current__p2",
+        "ppg_patient_004_window_1528__ta4_heart_rate_higher_than_previous__min_delta_bpm5p0__p0",
+        "ppg_patient_004_window_1688__ta3_heart_rate_query_current__p0",
+        "ppg_patient_005_window_1803__ta5_rhythm_changed_from_previous__p1",
+        "ppg_patient_006_window_81__ta5_rhythm_changed_from_previous__p0",
+        "ppg_patient_007_window_1108__ta5_rhythm_changed_from_previous__p2",
+        "ppg_patient_007_window_1218__ta1_af_presence_current__p2",
+        "ppg_patient_007_window_269__ta4_heart_rate_higher_than_previous__min_delta_bpm5p0__p2",
+        "ppg_patient_010_window_361__ta5_rhythm_changed_from_previous__p1",
+        "wesad_subject_S11_30s_clean_window_0050__ta6_stress_presence_current__p2",
+        "wesad_subject_S14_30s_clean_window_0052__ta7_stress_state_current__p1",
+        "wesad_subject_S3_30s_clean_window_0000__ta7_stress_state_current__p1",
+        "wesad_subject_S5_30s_clean_window_0009__ta9_stress_changed_from_previous__p0",
+        "wesad_subject_S7_30s_clean_window_0038__ta6_stress_presence_current__p0"
+      ]
+    }
+  ],
+  "derived_from": "final_v5 (BVP gold preserved)",
+  "active_split": "test"
+}

@@ -1,0 +1,41 @@
+[project]
+name = "vital-agent"
+version = "0.1.0"
+description = "VitalAgent — reactive/proactive physiological-signal agent and the VitalBench benchmark"
+requires-python = ">=3.10"
+
+dependencies = [
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "h5py>=3.16",
+    "wfdb>=4.0",
+    "neurokit2>=0.2",
+    "openpyxl>=3.1.5",
+    "python-dotenv>=1.0",
+    "pydantic>=2.0",
+    "scikit-learn>=1.7",
+    "openai>=1.0",
+    "httpx>=0.27",
+    "torch>=2.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "ruff>=0.1",
+]
+
+[project.scripts]
+vitalbench-eval = "agent.evaluation.reactive.vitalbench_eval:main"
+vitalagent-proactive-eval = "agent.evaluation.proactive.main:main"
+vitalagent-web-demo = "agent.web_demo:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["agent"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
