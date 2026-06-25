@@ -30,19 +30,19 @@ VitalAgent has two engines:
 agent/
   reactive/        Reactive pipeline: planner, validation, LLM agent, replan
   proactive/       Proactive pipeline: tracker, rule layer, LLM judge
-  tools/           Modality-aware tool registry (ECG / PPG / dataset / state tools)
+  tools/           Modality-aware tool registry
   benchmarks/
-    vitalbench/    VitalBench construction (templates, state→QA generator, eval loader)
+    vitalbench/    VitalBench construction
   evaluation/
     reactive/      VitalBench reactive evaluation harness
     proactive/     Proactive monitoring evaluation harness
-  mhealth/         MonitoringState schema + per-dataset state builders
+  mhealth/         MonitoringState schema & per-dataset state builders
   data/            Dataset loaders
-  encoder/         Signal processors + ECGFounder runtime
+  encoder/         Signal processors & ECGFounder runtime
   llm/             Shared OpenAI-compatible LLM client
-  demo/, web_demo.py, chat_ui/   Live web demo (HTTP server + frontend)
+  demo/, web_demo.py, chat_ui/   Live web demo
 scripts/vitalbench/   Benchmark build/generate scripts
-dataset/vitalbench/   The released VitalBench benchmark (qa/states + dev/test split)
+dataset/vitalbench/   The released VitalBench benchmark
 docs/                 Static project page with pre-recorded demo traces
 tests/                Unit test suite
 ```
