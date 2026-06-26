@@ -30,6 +30,28 @@ Each line of `qa.jsonl` is one question with these fields:
 `evaluation_method`, `numeric_tolerance`, `evidence`, `expected_tools`,
 `difficulty_tier`, `phrasing_index`, `generation_params`, `notes`.
 
+### Patient cohorts
+
+The released QA benchmark is a sampled state-grounded QA set, not the full
+proactive evaluation cohort.
+
+For the QA benchmark in `dataset/vitalbench/final`, the Icentia11k samples come
+from **25** selected patients:
+
+`00012`, `00069`, `00500`, `00992`, `01182`, `01500`, `01612`, `02500`,
+`03123`, `03500`, `04309`, `04500`, `05413`, `05500`, `05526`, `05769`,
+`05790`, `06011`, `06500`, `07500`, `08279`, `08500`, `08623`, `08947`,
+`10500`.
+
+The AFPPGECG QA samples come from **11** selected patients:
+
+`001`, `002`, `003`, `004`, `005`, `006`, `007`, `008`, `009`, `010`, `011`.
+
+The proactive evaluation uses the same **25** Icentia11k patients listed above,
+but uses the full AFPPGECG subject set. In the reported proactive runs, all
+**45** AFPPGECG subjects were attempted and subject `028` was skipped because of
+a data-loading issue, leaving **44** evaluated AFPPGECG subjects.
+
 ## Using the benchmark
 
 The evaluator reads the benchmark from `DATASET_VITALBENCH_ROOT`, which defaults
@@ -60,6 +82,30 @@ local copy through its dataset-root environment variable.
 `afppgecg` is the canonical identifier; the inputs `af_ppg_ecg` and the legacy
 `zenodo*` names are normalized to it by
 `agent.mhealth.schemas.canonicalize_dataset_name`.
+
+### Download helper
+
+The repository includes a helper for the datasets that can be fetched from their
+official hosts without manual browser steps:
+
+```bash
+./scripts/vitalbench/download_vitalbench_data.sh --cohort qa
+```
+
+Choose the cohort by scope:
+
+- `--cohort qa`: the 25 Icentia11k patients and the 11 AFPPGECG subjects used by
+  the QA benchmark.
+- `--cohort proactive`: the same 25 Icentia11k patients plus AFPPGECG subjects
+  `001`-`045`, excluding the known-bad subject `028`.
+- `--cohort full`: the complete Icentia11k PhysioNet tree and every file in the
+  AFPPGECG Zenodo record. The script asks for confirmation before starting this
+  full download.
+
+PPG-DaLiA and WESAD still require manual download from UCI. After extraction,
+the defaults expect `$DATASET_PPG_DALIA_ROOT/S1/S1.pkl` and
+`$DATASET_WESAD_ROOT/S2/S2.pkl` to exist. Override the four `DATASET_*_ROOT`
+variables in `.env` if your local layout differs.
 
 ## Rebuilding from raw
 
