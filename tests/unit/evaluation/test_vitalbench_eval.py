@@ -13,7 +13,8 @@ from agent.benchmarks.vitalbench.eval_loader import (
 from agent.benchmarks.vitalbench.schemas import VitalBenchSample
 from agent.mhealth.schemas import MonitoringState
 from agent.evaluation.reactive import vitalbench_eval as eval_mod
-from agent.schemas import IntentType, Plan, ToolResult
+from agent.reactive.validation import ValidationGate
+from agent.schemas import IntentType, Plan, PlanStep, ToolResult
 from agent.state.mhealth_state_store import get_global_state_store
 
 
@@ -522,11 +523,22 @@ def test_trace_agent_writes_agent_traces_jsonl(tmp_path: Path) -> None:
     assert rc == 0
     trace_record = json.loads((output_dir / "agent_traces.jsonl").read_text(encoding="utf-8"))
     assert trace_record["question_id"] == "q1"
+    assert trace_record["condition"] == "agent"
+    assert trace_record["tier"] == "A"
+    assert trace_record["template_id"] == "ta1"
+    assert trace_record["target"] == "heart_rate"
+    assert trace_record["dataset"] == "demo"
     assert trace_record["summary"]["event_count"] >= 1
     assert trace_record["events"][0]["event"] == "dry_run"
+    assert trace_record["events"][0]["attempt"] == 0
 
     prediction = json.loads((output_dir / "predictions.jsonl").read_text(encoding="utf-8"))
     assert prediction["trace_summary"]["event_count"] >= 1
+    assert prediction["trace_validation_first_passed"] is None
+    assert prediction["trace_replan_count"] == 0
+    assert prediction["trace_replan_triggered"] is False
+    assert prediction["trace_tool_call_count"] == 0
+    assert prediction["trace_llm_call_count"] == 0
     assert (output_dir / "error_analysis_summary.json").exists()
     assert (output_dir / "error_analysis_failures.csv").exists()
     assert (output_dir / "error_analysis_failures.jsonl").exists()
@@ -1056,6 +1068,55 @@ def test_restricted_signal_tool_pool_records_tool_trace() -> None:
     assert "result" in events[1]
 
 
+def test_traced_validation_gate_records_structured_issue() -> None:
+    trace = eval_mod.EvalTraceRecorder(
+        "q_validation",
+        condition="agent",
+        quiet=True,
+        result_max_chars=200,
+    )
+    plan = Plan(
+        intent=IntentType.STATUS_QUERY,
+        reasoning="check heart rate",
+        steps=[
+            PlanStep(
+                step_id=1,
+                tool_name="analyze_heart_rate",
+                tool_args={},
+                description="Analyze HR",
+            )
+        ],
+    )
+    results = [
+        ToolResult(
+            step_id=1,
+            tool_name="analyze_heart_rate",
+            success=False,
+            error="tool failed",
+        )
+    ]
+
+    with eval_mod.traced_validation_gate(trace):
+        validation = ValidationGate().validate(plan, results)
+
+    assert validation.passed is False
+    event = trace.events[0]
+    assert event["event"] == "validation_done"
+    assert event["attempt"] == 0
+    assert event["passed"] is False
+    assert event["has_critical"] is True
+    assert event["coverage"] == 0.0
+    assert event["issue_types"] == ["tool_failure"]
+    assert event["issue_severities"] == ["critical"]
+    assert event["tool_names"] == ["analyze_heart_rate"]
+    assert event["issue_tool_names"] == ["analyze_heart_rate"]
+
+    summary = trace.summarize()
+    assert summary["validation_first_passed"] is False
+    assert summary["validation_critical_first"] is True
+    assert summary["validation_issue_types"] == ["tool_failure"]
+
+
 def test_trace_summary_reports_orchestration_duration() -> None:
     trace = eval_mod.EvalTraceRecorder(
         "q_orchestration",
@@ -1072,3 +1133,61 @@ def test_trace_summary_reports_orchestration_duration() -> None:
 
     assert summary["orchestration_duration_sec"] == 1.25
     assert summary["tool_duration_sec"] == 0.0
+
+
+def test_trace_summary_reports_plan_signatures_and_replan_change() -> None:
+    initial_plan = Plan(
+        intent=IntentType.STATUS_QUERY,
+        reasoning="initial",
+        steps=[
+            PlanStep(
+                step_id=1,
+                tool_name="analyze_heart_rate",
+                tool_args={"record_id": "r1"},
+                description="Analyze HR",
+            )
+        ],
+    )
+    revised_plan = Plan(
+        intent=IntentType.STATUS_QUERY,
+        reasoning="revised",
+        steps=[
+            PlanStep(
+                step_id=1,
+                tool_name="analyze_hrv",
+                tool_args={"record_id": "r1"},
+                description="Analyze HRV",
+            )
+        ],
+    )
+    trace = eval_mod.EvalTraceRecorder(
+        "q_replan",
+        condition="agent",
+        quiet=True,
+        result_max_chars=200,
+    )
+
+    trace.add("planner_done", eval_mod._plan_trace_payload(initial_plan))
+    trace.current_attempt = 1
+    trace.add(
+        "replan_done",
+        {
+            **eval_mod._plan_trace_payload(revised_plan),
+            "attempt": 1,
+            "from_attempt": 0,
+            "to_attempt": 1,
+        },
+    )
+    trace.add("tool_done", {"tool_name": "analyze_hrv", "success": True})
+    trace.add("answer_done", {"chars": 3})
+
+    summary = trace.summarize()
+
+    assert summary["replan_count"] == 1
+    assert summary["replan_triggered"] is True
+    assert summary["initial_tool_names"] == ["analyze_heart_rate"]
+    assert summary["final_tool_names"] == ["analyze_hrv"]
+    assert summary["initial_plan_signature"] != summary["final_plan_signature"]
+    assert summary["plan_changed_after_replan"] is True
+    assert summary["tool_call_count"] == 1
+    assert summary["llm_call_count"] == 3

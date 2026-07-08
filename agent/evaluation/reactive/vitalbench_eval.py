@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import csv
+import hashlib
 import json
 import random
 import re
@@ -229,6 +230,19 @@ TOKEN_USAGE_KEYS = (
     "output_tokens",
     "total_tokens",
 )
+TRACE_PREDICTION_SUMMARY_KEYS = (
+    "validation_first_passed",
+    "validation_issue_types",
+    "replan_count",
+    "replan_triggered",
+    "initial_tool_names",
+    "initial_plan_signature",
+    "final_tool_names",
+    "final_plan_signature",
+    "plan_changed_after_replan",
+    "tool_call_count",
+    "llm_call_count",
+)
 AGENT_LIKE_CONDITIONS = {
     "agent",
     "agent_no_validation",
@@ -300,6 +314,50 @@ def _truncate_for_trace(value: Any, max_chars: int) -> Any:
     }
 
 
+def _plan_signature(plan_payload: dict[str, Any] | None) -> str | None:
+    """Stable hash of an ordered plan's tool names and arguments."""
+    if not isinstance(plan_payload, dict):
+        return None
+    steps = plan_payload.get("steps")
+    if not isinstance(steps, list):
+        return None
+    normalized_steps: list[dict[str, Any]] = []
+    for step in steps:
+        if not isinstance(step, dict):
+            continue
+        normalized_steps.append(
+            {
+                "tool_name": str(step.get("tool_name") or ""),
+                "tool_args": step.get("tool_args") or {},
+            }
+        )
+    payload = json.dumps(
+        normalized_steps,
+        ensure_ascii=False,
+        sort_keys=True,
+        default=str,
+        separators=(",", ":"),
+    )
+    return hashlib.sha1(payload.encode("utf-8")).hexdigest()
+
+
+def _plan_tool_names(plan_payload: dict[str, Any] | None) -> list[str]:
+    if not isinstance(plan_payload, dict):
+        return []
+    steps = plan_payload.get("steps")
+    if not isinstance(steps, list):
+        return []
+    return [
+        str(step.get("tool_name"))
+        for step in steps
+        if isinstance(step, dict) and step.get("tool_name")
+    ]
+
+
+def _enum_value(value: Any) -> str:
+    return str(getattr(value, "value", value))
+
+
 class EvalTraceRecorder:
     """Per-sample structured trace for diagnosing slow eval stages."""
 
@@ -307,13 +365,24 @@ class EvalTraceRecorder:
         self,
         question_id: str,
         *,
+        condition: str | None = None,
+        tier: str | None = None,
+        template_id: str | None = None,
+        target: str | None = None,
+        dataset: str | None = None,
         quiet: bool,
         result_max_chars: int,
     ):
         self.question_id = question_id
+        self.condition = condition
+        self.tier = tier
+        self.template_id = template_id
+        self.target = target
+        self.dataset = dataset
         self.quiet = quiet
         self.result_max_chars = result_max_chars
         self.started = time.monotonic()
+        self.current_attempt = 0
         self.events: list[dict[str, Any]] = []
 
     def add(
@@ -328,6 +397,7 @@ class EvalTraceRecorder:
         record: dict[str, Any] = {
             "question_id": self.question_id,
             "event": event,
+            "attempt": self.current_attempt,
             "elapsed_sec": round(now - self.started, 6),
         }
         if duration_sec is not None:
@@ -354,6 +424,64 @@ class EvalTraceRecorder:
         answer_done = next(
             (event for event in reversed(self.events) if event.get("event") == "answer_done"),
             None,
+        )
+        validation_events = [
+            event for event in self.events if event.get("event") == "validation_done"
+        ]
+        initial_validation = next(
+            (event for event in validation_events if int(event.get("attempt", -1)) == 0),
+            None,
+        )
+        replan_events = [event for event in self.events if event.get("event") == "replan_done"]
+        plan_done_events = [
+            event
+            for event in self.events
+            if event.get("event") in {"planner_done", "replan_done"}
+        ]
+        initial_plan_event = next(
+            (event for event in plan_done_events if int(event.get("attempt", -1)) == 0),
+            None,
+        )
+        executed_attempts = {
+            int(event.get("attempt", 0))
+            for event in tool_events
+            if event.get("attempt") is not None
+        }
+        final_attempt = max(executed_attempts) if executed_attempts else None
+        final_plan_event = (
+            next(
+                (
+                    event
+                    for event in reversed(plan_done_events)
+                    if int(event.get("attempt", -1)) == final_attempt
+                ),
+                None,
+            )
+            if final_attempt is not None
+            else (plan_done_events[-1] if plan_done_events else None)
+        )
+        initial_plan_signature = (
+            initial_plan_event.get("plan_signature")
+            if isinstance(initial_plan_event, dict)
+            else None
+        )
+        final_plan_signature = (
+            final_plan_event.get("plan_signature")
+            if isinstance(final_plan_event, dict)
+            else None
+        )
+        validation_issue_types = sorted(
+            {
+                str(issue_type)
+                for event in validation_events
+                for issue_type in (event.get("issue_types") or [])
+            }
+        )
+        replan_count = len(replan_events)
+        llm_call_count = (
+            len([event for event in self.events if event.get("event") == "planner_done"])
+            + replan_count
+            + len([event for event in self.events if event.get("event") == "answer_done"])
         )
         return {
             "duration_sec": round(time.monotonic() - self.started, 6),
@@ -382,11 +510,44 @@ class EvalTraceRecorder:
                 }
                 for event in tool_events
             ],
+            "validation_first_passed": (
+                None if initial_validation is None else bool(initial_validation.get("passed"))
+            ),
+            "validation_critical_first": (
+                None if initial_validation is None else bool(initial_validation.get("has_critical"))
+            ),
+            "validation_issue_types": validation_issue_types,
+            "replan_count": replan_count,
+            "replan_triggered": replan_count > 0,
+            "initial_tool_names": (
+                list(initial_plan_event.get("tool_names") or [])
+                if isinstance(initial_plan_event, dict)
+                else []
+            ),
+            "final_tool_names": (
+                list(final_plan_event.get("tool_names") or [])
+                if isinstance(final_plan_event, dict)
+                else []
+            ),
+            "initial_plan_signature": initial_plan_signature,
+            "final_plan_signature": final_plan_signature,
+            "plan_changed_after_replan": (
+                initial_plan_signature is not None
+                and final_plan_signature is not None
+                and initial_plan_signature != final_plan_signature
+            ),
+            "tool_call_count": len(tool_events),
+            "llm_call_count": llm_call_count,
         }
 
     def to_record(self) -> dict[str, Any]:
         return {
             "question_id": self.question_id,
+            "condition": self.condition,
+            "tier": self.tier,
+            "template_id": self.template_id,
+            "target": self.target,
+            "dataset": self.dataset,
             "summary": self.summarize(),
             "events": self.events,
         }
@@ -778,6 +939,15 @@ def normalize_token_usage(token_usage: dict[str, Any] | None) -> dict[str, int]:
     return usage
 
 
+def trace_prediction_fields(trace_summary: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(trace_summary, dict):
+        return {}
+    return {
+        f"trace_{key}": trace_summary.get(key)
+        for key in TRACE_PREDICTION_SUMMARY_KEYS
+    }
+
+
 @register_tool(
     name=SAFE_BUILD_TOOL,
     description=(
@@ -1022,7 +1192,8 @@ def _plan_trace_payload(plan: Any) -> dict[str, Any]:
         "intent": str(plan_payload.get("intent")),
         "reasoning": plan_payload.get("reasoning"),
         "step_count": len(steps),
-        "tool_names": [step.get("tool_name") for step in steps if isinstance(step, dict)],
+        "tool_names": _plan_tool_names(plan_payload),
+        "plan_signature": _plan_signature(plan_payload),
         "plan": plan_payload,
     }
 
@@ -1040,6 +1211,7 @@ def traced_reactive_planner(trace: EvalTraceRecorder | None) -> Iterator[None]:
     original_replan = planner_mod.Planner.replan
 
     def traced_create_plan(self: Any, *args: Any, **kwargs: Any) -> Any:
+        trace.current_attempt = 0
         trace.add(
             "planner_start",
             {"model": getattr(self, "model", None)},
@@ -1071,9 +1243,16 @@ def traced_reactive_planner(trace: EvalTraceRecorder | None) -> Iterator[None]:
         return plan, usage
 
     def traced_replan(self: Any, *args: Any, **kwargs: Any) -> Any:
+        from_attempt = trace.current_attempt
+        previous_plan = kwargs.get("previous_plan")
+        if previous_plan is None and args:
+            previous_plan = args[0]
+        issues = kwargs.get("issues")
+        if issues is None and len(args) > 1:
+            issues = args[1]
         trace.add(
             "replan_start",
-            {"model": getattr(self, "model", None)},
+            {"model": getattr(self, "model", None), "from_attempt": from_attempt},
             stdout=f"replan start model={getattr(self, 'model', None)}",
         )
         started = time.monotonic()
@@ -1088,8 +1267,39 @@ def traced_reactive_planner(trace: EvalTraceRecorder | None) -> Iterator[None]:
             )
             raise
         duration = time.monotonic() - started
+        to_attempt = from_attempt + 1
+        trace.current_attempt = to_attempt
+        previous_payload = _plan_trace_payload(previous_plan) if previous_plan is not None else {}
+        previous_tool_names = [
+            str(name)
+            for name in previous_payload.get("tool_names", [])
+            if name
+        ]
         payload = _plan_trace_payload(plan)
         payload["usage"] = usage
+        new_tool_names = [
+            str(name)
+            for name in payload.get("tool_names", [])
+            if name
+        ]
+        payload.update(
+            {
+                "attempt": to_attempt,
+                "from_attempt": from_attempt,
+                "to_attempt": to_attempt,
+                "previous_tool_names": previous_tool_names,
+                "new_tool_names": new_tool_names,
+                "added_tools": [
+                    name for name in new_tool_names if name not in previous_tool_names
+                ],
+                "removed_tools": [
+                    name for name in previous_tool_names if name not in new_tool_names
+                ],
+                "issues_used_for_replan": [
+                    str(issue) for issue in (issues or [])
+                ],
+            }
+        )
         trace.add(
             "replan_done",
             payload,
@@ -1108,6 +1318,84 @@ def traced_reactive_planner(trace: EvalTraceRecorder | None) -> Iterator[None]:
     finally:
         planner_mod.Planner.create_plan = original_create_plan
         planner_mod.Planner.replan = original_replan
+
+
+@contextlib.contextmanager
+def traced_validation_gate(trace: EvalTraceRecorder | None) -> Iterator[None]:
+    """Record validation outcomes made inside ReactivePipeline."""
+    if trace is None:
+        yield
+        return
+
+    import agent.reactive.validation as validation_mod
+
+    original_validate = validation_mod.ValidationGate.validate
+
+    def traced_validate(self: Any, *args: Any, **kwargs: Any) -> Any:
+        plan = kwargs.get("plan")
+        if plan is None and args:
+            plan = args[0]
+        started = time.monotonic()
+        try:
+            result = original_validate(self, *args, **kwargs)
+        except Exception as exc:
+            trace.add(
+                "validation_error",
+                {"error": str(exc)},
+                duration_sec=time.monotonic() - started,
+                stdout=f"validation error elapsed={time.monotonic() - started:.1f}s error={exc}",
+            )
+            raise
+
+        issues = list(getattr(result, "issues", []) or [])
+        tool_names = [
+            str(step.tool_name)
+            for step in getattr(plan, "steps", []) or []
+            if getattr(step, "tool_name", None)
+        ]
+        critical_issues = list(getattr(result, "critical_issues", []) or [])
+        warnings = list(getattr(result, "warnings", []) or [])
+        trace.add(
+            "validation_done",
+            {
+                "passed": bool(getattr(result, "passed", False)),
+                "coverage": float(getattr(result, "coverage", 0.0) or 0.0),
+                "has_critical": bool(getattr(result, "has_critical", False)),
+                "issue_count": len(issues),
+                "critical_issue_count": len(critical_issues),
+                "warning_issue_count": len(warnings),
+                "issue_messages": [
+                    str(getattr(issue, "message", "")) for issue in issues
+                ],
+                "issue_types": [
+                    _enum_value(getattr(issue, "issue_type", ""))
+                    for issue in issues
+                ],
+                "issue_severities": [
+                    _enum_value(getattr(issue, "severity", ""))
+                    for issue in issues
+                ],
+                "tool_names": tool_names,
+                "issue_tool_names": [
+                    str(getattr(issue, "tool_name", ""))
+                    for issue in issues
+                    if getattr(issue, "tool_name", "")
+                ],
+            },
+            duration_sec=time.monotonic() - started,
+            stdout=(
+                "validation done "
+                f"passed={bool(getattr(result, 'passed', False))} "
+                f"issues={len(issues)}"
+            ),
+        )
+        return result
+
+    validation_mod.ValidationGate.validate = traced_validate
+    try:
+        yield
+    finally:
+        validation_mod.ValidationGate.validate = original_validate
 
 
 def _trace_tool_call(
@@ -1522,7 +1810,7 @@ def run_agent_sample(
             )
         else:
             tool_pool_context = restricted_mhealth_tool_pool(trace)
-        with traced_reactive_planner(trace), tool_pool_context:
+        with traced_reactive_planner(trace), traced_validation_gate(trace), tool_pool_context:
             pipeline = ReactivePipeline()
             if no_validation_baseline:
                 pipeline.disable_validation = True
@@ -1818,7 +2106,6 @@ def classify_vitalbench_failure(record: dict[str, Any]) -> tuple[str, str]:
     if record.get("score") is True and not record.get("error_message"):
         return "", ""
 
-    condition = str(record.get("condition") or "")
     if record.get("error_message"):
         return "runtime_error", str(record.get("error_message"))
 
@@ -2192,7 +2479,6 @@ def main(argv: list[str] | None = None) -> int:
             quiet=args.quiet,
         )
     states_by_id = {state.state_id: state for state in states}
-    visible_states_by_id = {state.state_id: state for state in visible_states}
     build_supported_contexts = {
         key
         for key in {context_key_for_state(state) for state in states}
@@ -2239,13 +2525,6 @@ def main(argv: list[str] | None = None) -> int:
         f"(tier={args.tier}, max_samples={args.max_samples}, seed={args.seed})",
         quiet=args.quiet,
     )
-
-    state_for_sample = {
-        sample.agent_input.question_id: visible_states_by_id.get(
-            str(sample.gt_metadata.get("source_state_id"))
-        )
-        for sample in samples
-    }
 
     predictions: list[dict[str, Any]] = []
     agent_trace_records: list[dict[str, Any]] = []
@@ -2298,6 +2577,11 @@ def main(argv: list[str] | None = None) -> int:
             trace = (
                 EvalTraceRecorder(
                     agent_input.question_id,
+                    condition="agent",
+                    tier=str(sample.gt_metadata.get("tier") or ""),
+                    template_id=str(sample.gt_metadata.get("template_id") or ""),
+                    target=str(target or ""),
+                    dataset=str(locator.dataset or ""),
                     quiet=args.quiet,
                     result_max_chars=args.trace_result_chars,
                 )
@@ -2326,6 +2610,7 @@ def main(argv: list[str] | None = None) -> int:
                 f"elapsed={condition_elapsed:.1f}s",
                 quiet=args.quiet,
             )
+            trace_summary = agent_result.get("trace_summary")
             predictions.append(
                 {
                     **base,
@@ -2341,7 +2626,8 @@ def main(argv: list[str] | None = None) -> int:
                     "error_class": agent_result["error_class"] or error_class,
                     "error_message": agent_result["error_message"],
                     "elapsed_sec": condition_elapsed,
-                    "trace_summary": agent_result.get("trace_summary"),
+                    "trace_summary": trace_summary,
+                    **trace_prediction_fields(trace_summary),
                     "raw_response": agent_result["raw_response"],
                 }
             )
@@ -2369,6 +2655,11 @@ def main(argv: list[str] | None = None) -> int:
             trace = (
                 EvalTraceRecorder(
                     agent_input.question_id,
+                    condition=condition_name,
+                    tier=str(sample.gt_metadata.get("tier") or ""),
+                    template_id=str(sample.gt_metadata.get("template_id") or ""),
+                    target=str(target or ""),
+                    dataset=str(locator.dataset or ""),
                     quiet=args.quiet,
                     result_max_chars=args.trace_result_chars,
                 )
@@ -2398,6 +2689,7 @@ def main(argv: list[str] | None = None) -> int:
                 f"elapsed={condition_elapsed:.1f}s",
                 quiet=args.quiet,
             )
+            trace_summary = agent_result.get("trace_summary")
             predictions.append(
                 {
                     **base,
@@ -2413,7 +2705,8 @@ def main(argv: list[str] | None = None) -> int:
                     "error_class": agent_result["error_class"] or error_class,
                     "error_message": agent_result["error_message"],
                     "elapsed_sec": condition_elapsed,
-                    "trace_summary": agent_result.get("trace_summary"),
+                    "trace_summary": trace_summary,
+                    **trace_prediction_fields(trace_summary),
                     "raw_response": agent_result["raw_response"],
                     **extra_record_fields,
                 }
@@ -2434,6 +2727,11 @@ def main(argv: list[str] | None = None) -> int:
             trace = (
                 EvalTraceRecorder(
                     agent_input.question_id,
+                    condition="agent_no_planner",
+                    tier=str(sample.gt_metadata.get("tier") or ""),
+                    template_id=str(sample.gt_metadata.get("template_id") or ""),
+                    target=str(target or ""),
+                    dataset=str(locator.dataset or ""),
                     quiet=args.quiet,
                     result_max_chars=args.trace_result_chars,
                 )
@@ -2466,6 +2764,7 @@ def main(argv: list[str] | None = None) -> int:
                 f"elapsed={condition_elapsed:.1f}s",
                 quiet=args.quiet,
             )
+            trace_summary = agent_result.get("trace_summary")
             predictions.append(
                 {
                     **base,
@@ -2481,7 +2780,8 @@ def main(argv: list[str] | None = None) -> int:
                     "error_class": agent_result["error_class"] or error_class,
                     "error_message": agent_result["error_message"],
                     "elapsed_sec": condition_elapsed,
-                    "trace_summary": agent_result.get("trace_summary"),
+                    "trace_summary": trace_summary,
+                    **trace_prediction_fields(trace_summary),
                     "raw_response": agent_result["raw_response"],
                     "agent_no_planner_seed": args.seed,
                     "agent_no_planner_tool_count": args.agent_no_planner_tool_count,
