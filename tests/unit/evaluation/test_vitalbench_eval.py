@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import json
 from dataclasses import replace
 from pathlib import Path
@@ -13,8 +14,18 @@ from agent.benchmarks.vitalbench.eval_loader import (
 from agent.benchmarks.vitalbench.schemas import VitalBenchSample
 from agent.mhealth.schemas import MonitoringState
 from agent.evaluation.reactive import vitalbench_eval as eval_mod
+from agent.llm import LLMStreamEvent, zero_usage
 from agent.reactive.validation import ValidationGate
-from agent.schemas import IntentType, Plan, PlanStep, ToolResult
+from agent.schemas import (
+    IntentType,
+    IssueSeverity,
+    IssueType,
+    Plan,
+    PlanStep,
+    ToolResult,
+    ValidationIssue,
+    ValidationResult,
+)
 from agent.state.mhealth_state_store import get_global_state_store
 
 
@@ -535,6 +546,10 @@ def test_trace_agent_writes_agent_traces_jsonl(tmp_path: Path) -> None:
     prediction = json.loads((output_dir / "predictions.jsonl").read_text(encoding="utf-8"))
     assert prediction["trace_summary"]["event_count"] >= 1
     assert prediction["trace_validation_first_passed"] is None
+    assert prediction["trace_validation_first_coverage"] is None
+    assert prediction["trace_validation_last_passed"] is None
+    assert prediction["trace_validation_last_coverage"] is None
+    assert prediction["trace_coverage_improved"] is None
     assert prediction["trace_replan_count"] == 0
     assert prediction["trace_replan_triggered"] is False
     assert prediction["trace_tool_call_count"] == 0
@@ -1113,8 +1128,148 @@ def test_traced_validation_gate_records_structured_issue() -> None:
 
     summary = trace.summarize()
     assert summary["validation_first_passed"] is False
+    assert summary["validation_first_coverage"] == 0.0
+    assert summary["validation_last_passed"] is False
+    assert summary["validation_last_coverage"] == 0.0
+    assert summary["coverage_improved"] is False
     assert summary["validation_critical_first"] is True
     assert summary["validation_issue_types"] == ["tool_failure"]
+
+
+def test_run_agent_sample_trace_records_deterministic_replan(monkeypatch) -> None:
+    import agent.reactive.llm_agent as llm_agent_mod
+    import agent.reactive.pipeline as pipeline_mod
+    import agent.reactive.planner as planner_mod
+
+    initial_plan = Plan(
+        intent=IntentType.STATUS_QUERY,
+        reasoning="initial",
+        steps=[
+            PlanStep(
+                step_id=1,
+                tool_name="analyze_heart_rate",
+                tool_args={"record_id": "r1"},
+                description="Analyze HR",
+            )
+        ],
+    )
+    revised_plan = Plan(
+        intent=IntentType.STATUS_QUERY,
+        reasoning="revised",
+        steps=[
+            PlanStep(
+                step_id=1,
+                tool_name="analyze_hrv",
+                tool_args={"record_id": "r1"},
+                description="Analyze HRV",
+            )
+        ],
+    )
+    validation_calls: list[list[str]] = []
+
+    def fake_create_plan(self, *args, **kwargs):
+        return initial_plan, zero_usage()
+
+    def fake_replan(self, *, previous_plan, issues, user_query):
+        assert previous_plan == initial_plan
+        assert issues == ["first attempt failed"]
+        assert user_query
+        return revised_plan, zero_usage()
+
+    def fake_validate(self, plan, results):
+        validation_calls.append([step.tool_name for step in plan.steps])
+        if len(validation_calls) == 1:
+            return ValidationResult(
+                passed=False,
+                coverage=0.5,
+                issues=[
+                    ValidationIssue(
+                        step_id=1,
+                        tool_name="analyze_heart_rate",
+                        issue_type=IssueType.TOOL_FAILURE,
+                        severity=IssueSeverity.CRITICAL,
+                        message="first attempt failed",
+                    )
+                ],
+            )
+        return ValidationResult(passed=True, coverage=1.0, issues=[])
+
+    def fake_call_tool(name: str, **kwargs):
+        return {
+            "success": True,
+            "data": {"tool_name": name, "args": kwargs},
+            "metadata": {"source": "test"},
+        }
+
+    def fake_generate_answer(self, user_query, plan, tool_results, extra_context=""):
+        assert plan == revised_plan
+        assert [result.tool_name for result in tool_results] == ["analyze_hrv"]
+        yield LLMStreamEvent(delta="yes")
+        yield LLMStreamEvent(usage=zero_usage())
+
+    monkeypatch.setattr(planner_mod.Planner, "create_plan", fake_create_plan)
+    monkeypatch.setattr(planner_mod.Planner, "replan", fake_replan)
+    monkeypatch.setattr(ValidationGate, "validate", fake_validate)
+    monkeypatch.setattr(pipeline_mod, "call_tool", fake_call_tool)
+    monkeypatch.setattr(llm_agent_mod.LLMAgent, "generate_answer", fake_generate_answer)
+    monkeypatch.setattr(
+        eval_mod,
+        "restricted_signal_tool_pool",
+        lambda *args, **kwargs: contextlib.nullcontext(),
+    )
+
+    sample = make_eval_sample("q_replan_path")
+    trace = eval_mod.EvalTraceRecorder(
+        sample.agent_input.question_id,
+        condition="agent",
+        tier="A",
+        template_id="ta3",
+        target="heart_rate_numeric_current",
+        dataset="demo",
+        quiet=True,
+        result_max_chars=200,
+    )
+
+    result = eval_mod.run_agent_sample(
+        sample.agent_input,
+        dry_run=False,
+        data_mode="raw",
+        trace=trace,
+        benchmark_tier="A",
+        benchmark_target="heart_rate_numeric_current",
+    )
+
+    assert result["prediction"] == "yes"
+    validation_events = [
+        event for event in trace.events if event["event"] == "validation_done"
+    ]
+    assert [event["attempt"] for event in validation_events] == [0, 1]
+    assert validation_events[0]["issue_types"] == ["tool_failure"]
+    assert validation_events[0]["coverage"] < 1.0
+    assert validation_events[1]["passed"] is True
+
+    replan_events = [event for event in trace.events if event["event"] == "replan_done"]
+    assert len(replan_events) == 1
+    replan = replan_events[0]
+    assert replan["attempt"] == 1
+    assert replan["from_attempt"] == 0
+    assert replan["to_attempt"] == 1
+    assert replan["previous_tool_names"] == ["analyze_heart_rate"]
+    assert replan["new_tool_names"] == ["analyze_hrv"]
+    assert replan["added_tools"] == ["analyze_hrv"]
+    assert replan["removed_tools"] == ["analyze_heart_rate"]
+    assert replan["issues_used_for_replan"] == ["first attempt failed"]
+
+    summary = trace.summarize()
+    assert summary["replan_count"] == 1
+    assert summary["plan_changed_after_replan"] is True
+    assert summary["validation_first_coverage"] == 0.5
+    assert summary["validation_last_passed"] is True
+    assert summary["validation_last_coverage"] == 1.0
+    assert summary["coverage_improved"] is True
+    assert summary["initial_plan_signature"] != summary["final_plan_signature"]
+    assert summary["initial_tool_names"] == ["analyze_heart_rate"]
+    assert summary["final_tool_names"] == ["analyze_hrv"]
 
 
 def test_trace_summary_reports_orchestration_duration() -> None:

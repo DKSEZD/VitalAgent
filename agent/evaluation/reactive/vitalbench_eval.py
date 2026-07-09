@@ -232,6 +232,10 @@ TOKEN_USAGE_KEYS = (
 )
 TRACE_PREDICTION_SUMMARY_KEYS = (
     "validation_first_passed",
+    "validation_first_coverage",
+    "validation_last_passed",
+    "validation_last_coverage",
+    "coverage_improved",
     "validation_issue_types",
     "replan_count",
     "replan_triggered",
@@ -432,6 +436,22 @@ class EvalTraceRecorder:
             (event for event in validation_events if int(event.get("attempt", -1)) == 0),
             None,
         )
+        final_validation = validation_events[-1] if validation_events else None
+        validation_first_coverage = (
+            None
+            if initial_validation is None or initial_validation.get("coverage") is None
+            else float(initial_validation.get("coverage"))
+        )
+        validation_last_coverage = (
+            None
+            if final_validation is None or final_validation.get("coverage") is None
+            else float(final_validation.get("coverage"))
+        )
+        coverage_improved = (
+            None
+            if validation_first_coverage is None or validation_last_coverage is None
+            else validation_last_coverage > validation_first_coverage
+        )
         replan_events = [event for event in self.events if event.get("event") == "replan_done"]
         plan_done_events = [
             event
@@ -513,6 +533,12 @@ class EvalTraceRecorder:
             "validation_first_passed": (
                 None if initial_validation is None else bool(initial_validation.get("passed"))
             ),
+            "validation_first_coverage": validation_first_coverage,
+            "validation_last_passed": (
+                None if final_validation is None else bool(final_validation.get("passed"))
+            ),
+            "validation_last_coverage": validation_last_coverage,
+            "coverage_improved": coverage_improved,
             "validation_critical_first": (
                 None if initial_validation is None else bool(initial_validation.get("has_critical"))
             ),
