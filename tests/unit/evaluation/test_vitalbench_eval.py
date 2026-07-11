@@ -582,6 +582,8 @@ def test_remaining_agent_ablation_conditions_dry_run_write_records(tmp_path: Pat
             str(manifest_path),
             "--max-samples",
             "1",
+            "--limit-per-target",
+            "30",
             "--conditions",
             "agent_no_validation",
             "agent_no_replan",
@@ -601,6 +603,7 @@ def test_remaining_agent_ablation_conditions_dry_run_write_records(tmp_path: Pat
         "agent_no_replan",
     ]
     eval_payload = json.loads((output_dir / "eval.json").read_text(encoding="utf-8"))
+    assert eval_payload["limit_per_target"] == 30
     assert set(eval_payload["aggregate"]) == {"agent_no_validation", "agent_no_replan"}
     assert set(eval_payload["resolved_config"]["llm_profiles"]) == {
         "agent",
@@ -1081,6 +1084,145 @@ def test_restricted_signal_tool_pool_records_tool_trace() -> None:
     assert events[0]["tool_name"] == "state_get_current_monitoring_state"
     assert events[1]["success"] is False
     assert "result" in events[1]
+
+
+def test_restricted_signal_tool_pool_injects_critical_tool_failure(monkeypatch) -> None:
+    import agent.reactive.pipeline as pipeline_mod
+    import agent.tools.registry as registry_mod
+
+    def fake_call_tool(name: str, **kwargs):
+        return {
+            "success": True,
+            "data": {"tool_name": name, "kwargs": kwargs},
+            "metadata": {"source": "test"},
+        }
+
+    monkeypatch.setattr(registry_mod, "call_tool", fake_call_tool)
+    trace = eval_mod.EvalTraceRecorder(
+        "q_perturb",
+        condition="agent",
+        quiet=True,
+        result_max_chars=200,
+    )
+    perturbation = eval_mod.PerturbationConfig(
+        rate=1.0,
+        mode="tool_failure",
+        target="critical",
+        seed=123,
+    )
+
+    with eval_mod.restricted_signal_tool_pool(
+        trace,
+        dataset="afppgecg",
+        adaptive_scope_enabled=True,
+        perturbation=perturbation,
+        question_id="q_perturb",
+    ):
+        result = pipeline_mod.call_tool("evaluate_proactive_rules")
+
+    assert result == {
+        "success": False,
+        "error": "injected: tool_failure for evaluate_proactive_rules",
+    }
+    assert [event["event"] for event in trace.events] == [
+        "tool_start",
+        "tool_perturbation_injected",
+        "tool_done",
+    ]
+    assert trace.events[1]["tool_name"] == "evaluate_proactive_rules"
+    assert trace.events[1]["occurrence_index"] == 0
+    assert trace.events[2]["success"] is False
+    summary = trace.summarize()
+    assert summary["perturbation_count"] == 1
+    assert eval_mod.trace_prediction_fields(summary)["trace_perturbation_count"] == 1
+
+
+def test_restricted_signal_tool_pool_injects_raw_analysis_tool_as_critical(
+    monkeypatch,
+) -> None:
+    import agent.reactive.pipeline as pipeline_mod
+    import agent.tools.registry as registry_mod
+
+    def fake_call_tool(name: str, **kwargs):
+        return {
+            "success": True,
+            "data": {"tool_name": name, "kwargs": kwargs},
+            "metadata": {"source": "test"},
+        }
+
+    monkeypatch.setattr(registry_mod, "call_tool", fake_call_tool)
+    trace = eval_mod.EvalTraceRecorder(
+        "q_raw_perturb",
+        condition="agent",
+        quiet=True,
+        result_max_chars=200,
+    )
+
+    with eval_mod.restricted_signal_tool_pool(
+        trace,
+        dataset="ppg_dalia",
+        perturbation=eval_mod.PerturbationConfig(
+            rate=1.0,
+            mode="tool_failure",
+            target="critical",
+            seed=123,
+        ),
+        question_id="q_raw_perturb",
+    ):
+        result = pipeline_mod.call_tool(
+            "analyze_ppg_dalia_window_signal",
+            dataset="ppg_dalia",
+            patient_id="S1",
+            window_start_s=0.0,
+            window_end_s=30.0,
+        )
+
+    assert result == {
+        "success": False,
+        "error": "injected: tool_failure for analyze_ppg_dalia_window_signal",
+    }
+    perturbation_events = [
+        event
+        for event in trace.events
+        if event["event"] == "tool_perturbation_injected"
+    ]
+    assert len(perturbation_events) == 1
+    assert perturbation_events[0]["tool_name"] == "analyze_ppg_dalia_window_signal"
+
+
+def test_restricted_mhealth_tool_pool_injects_any_target() -> None:
+    import agent.reactive.pipeline as pipeline_mod
+
+    trace = eval_mod.EvalTraceRecorder(
+        "q_state_perturb",
+        condition="agent",
+        quiet=True,
+        result_max_chars=200,
+    )
+    perturbation = eval_mod.PerturbationConfig(
+        rate=1.0,
+        mode="tool_failure",
+        target="any",
+        seed=123,
+    )
+
+    with eval_mod.restricted_mhealth_tool_pool(
+        trace,
+        perturbation=perturbation,
+        question_id="q_state_perturb",
+    ):
+        result = pipeline_mod.call_tool("state_list_contexts")
+
+    assert result == {
+        "success": False,
+        "error": "injected: tool_failure for state_list_contexts",
+    }
+    assert [event["event"] for event in trace.events] == [
+        "tool_start",
+        "tool_perturbation_injected",
+        "tool_done",
+    ]
+    assert trace.summarize()["perturbation_count"] == 1
 
 
 def test_traced_validation_gate_records_structured_issue() -> None:

@@ -70,6 +70,9 @@ class ValidationGate:
         "proactive_explain_last_alert": ["alert", "explanation"],
         "evaluate_proactive_rules": ["data", "metadata"],
         "analyze_afppgecg_rhythm_context": ["data", "metadata"],
+        "analyze_icentia11k_ecg_window_signal": ["data", "metadata"],
+        "analyze_ppg_dalia_window_signal": ["data", "metadata"],
+        "analyze_wesad_window_signal": ["data", "metadata"],
     }
 
     # ---- Severity classification ----
@@ -94,6 +97,9 @@ class ValidationGate:
         "state_get_evidence",
         "evaluate_proactive_rules",
         "analyze_afppgecg_rhythm_context",
+        "analyze_icentia11k_ecg_window_signal",
+        "analyze_ppg_dalia_window_signal",
+        "analyze_wesad_window_signal",
     }
     # All other tools default to WARNING severity when they fail.
 

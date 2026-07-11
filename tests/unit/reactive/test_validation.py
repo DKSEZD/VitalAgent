@@ -255,6 +255,64 @@ def test_ppg_critical_tool_failure_blocks() -> None:
     assert result.issues[0].severity == IssueSeverity.CRITICAL
 
 
+def test_raw_signal_analysis_tool_failures_are_critical() -> None:
+    for tool_name in [
+        "analyze_icentia11k_ecg_window_signal",
+        "analyze_ppg_dalia_window_signal",
+        "analyze_wesad_window_signal",
+    ]:
+        plan = _plan(
+            PlanStep(
+                step_id=1,
+                tool_name=tool_name,
+                tool_args={},
+                description="raw signal analysis",
+            ),
+        )
+        results = [
+            ToolResult(
+                step_id=1,
+                tool_name=tool_name,
+                success=False,
+                error="raw analyzer failed",
+            ),
+        ]
+
+        result = ValidationGate().validate(plan, results)
+
+        assert result.passed is False
+        assert len(result.issues) == 1
+        assert result.issues[0].issue_type == IssueType.TOOL_FAILURE
+        assert result.issues[0].severity == IssueSeverity.CRITICAL
+
+
+def test_raw_signal_analysis_tools_require_data_and_metadata() -> None:
+    plan = _plan(
+        PlanStep(
+            step_id=1,
+            tool_name="analyze_ppg_dalia_window_signal",
+            tool_args={},
+            description="raw signal analysis",
+        ),
+    )
+    results = [
+        ToolResult(
+            step_id=1,
+            tool_name="analyze_ppg_dalia_window_signal",
+            success=True,
+            data={"data": {"bvp_pulse": {"mean_pulse_rate_bpm": 80.0}}},
+        ),
+    ]
+
+    result = ValidationGate().validate(plan, results)
+
+    assert result.passed is False
+    assert result.coverage == 0.0
+    assert result.issues[0].issue_type == IssueType.MISSING_FIELD
+    assert result.issues[0].severity == IssueSeverity.CRITICAL
+    assert "metadata" in result.issue_messages[0]
+
+
 def test_ppg_poor_quality_warns_signal_dependent_tools() -> None:
     plan = _plan(
         PlanStep(step_id=1, tool_name="assess_ppg_signal_quality", tool_args={}, description="quality"),

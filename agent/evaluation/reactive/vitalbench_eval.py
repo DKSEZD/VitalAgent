@@ -37,6 +37,7 @@ from agent.llm import (
 from agent.mhealth.schemas import MonitoringState
 from agent.mhealth.schemas import canonicalize_dataset_name
 from agent.reactive.previous_window_compare import PREVIOUS_WINDOW_COMPARISON_RESULT
+from agent.reactive.validation import ValidationGate
 from agent.state.mhealth_state_store import get_global_state_store
 from agent.tools.registry import call_tool, list_tools, register_tool
 
@@ -244,6 +245,7 @@ TRACE_PREDICTION_SUMMARY_KEYS = (
     "final_tool_names",
     "final_plan_signature",
     "plan_changed_after_replan",
+    "perturbation_count",
     "tool_call_count",
     "llm_call_count",
 )
@@ -292,6 +294,48 @@ class SplitResult:
     preloaded_contexts: set[ContextKey]
     missing_contexts: set[ContextKey]
     routing_analysis_limited: bool
+
+
+@dataclass(frozen=True)
+class PerturbationConfig:
+    rate: float = 0.0
+    mode: str = "tool_failure"
+    target: str = "critical"
+    seed: int = 42
+
+    @property
+    def enabled(self) -> bool:
+        return self.rate > 0.0
+
+    def normalized_rate(self) -> float:
+        return min(1.0, max(0.0, float(self.rate)))
+
+    def allows_tool(self, tool_name: str) -> bool:
+        if self.target == "critical":
+            return tool_name in ValidationGate.CRITICAL_TOOLS
+        return True
+
+    def should_inject(
+        self,
+        *,
+        question_id: str,
+        tool_name: str,
+        occurrence_index: int,
+    ) -> bool:
+        if not self.enabled or not self.allows_tool(tool_name):
+            return False
+        key = f"{self.seed}\0{question_id}\0{tool_name}\0{occurrence_index}"
+        digest = hashlib.sha1(key.encode("utf-8")).hexdigest()
+        score = int(digest[:16], 16) / float(0xFFFFFFFFFFFFFFFF)
+        return score < self.normalized_rate()
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "rate": self.rate,
+            "mode": self.mode,
+            "target": self.target,
+            "seed": self.seed,
+        }
 
 
 def _json_size(value: Any) -> int:
@@ -420,6 +464,11 @@ class EvalTraceRecorder:
         tool_events = [event for event in self.events if event.get("event") == "tool_done"]
         orchestration_events = [
             event for event in self.events if event.get("event") == "orchestration_done"
+        ]
+        perturbation_events = [
+            event
+            for event in self.events
+            if event.get("event") == "tool_perturbation_injected"
         ]
         planner_events = [
             event for event in self.events
@@ -562,6 +611,7 @@ class EvalTraceRecorder:
                 and final_plan_signature is not None
                 and initial_plan_signature != final_plan_signature
             ),
+            "perturbation_count": len(perturbation_events),
             "tool_call_count": len(tool_events),
             "llm_call_count": llm_call_count,
         }
@@ -1483,8 +1533,110 @@ def _trace_tool_call(
     return result
 
 
+def _perturbed_tool_result(
+    result: dict[str, Any],
+    *,
+    tool_name: str,
+    mode: str,
+) -> dict[str, Any]:
+    if mode == "tool_failure":
+        return {
+            "success": False,
+            "error": f"injected: tool_failure for {tool_name}",
+        }
+
+    perturbed = dict(result)
+    perturbed["success"] = True
+    required_fields = ValidationGate.REQUIRED_FIELDS.get(tool_name, [])
+    for field_name in required_fields:
+        perturbed[field_name] = None
+    if not required_fields and "data" in perturbed:
+        perturbed["data"] = None
+    return perturbed
+
+
+def _maybe_perturb_tool_result(
+    result: dict[str, Any],
+    *,
+    trace: EvalTraceRecorder | None,
+    perturbation: PerturbationConfig | None,
+    question_id: str,
+    tool_name: str,
+    occurrence_index: int,
+) -> dict[str, Any]:
+    if perturbation is None or not perturbation.should_inject(
+        question_id=question_id,
+        tool_name=tool_name,
+        occurrence_index=occurrence_index,
+    ):
+        return result
+
+    perturbed = _perturbed_tool_result(
+        result,
+        tool_name=tool_name,
+        mode=perturbation.mode,
+    )
+    if trace is not None:
+        trace.add(
+            "tool_perturbation_injected",
+            {
+                "tool_name": tool_name,
+                "occurrence_index": occurrence_index,
+                "mode": perturbation.mode,
+                "target": perturbation.target,
+                "rate": perturbation.rate,
+                "seed": perturbation.seed,
+                "original_success": result.get("success"),
+                "perturbed_success": perturbed.get("success"),
+            },
+            stdout=(
+                "perturbation injected "
+                f"tool={tool_name} occurrence={occurrence_index} "
+                f"mode={perturbation.mode}"
+            ),
+        )
+    return perturbed
+
+
+def _trace_perturbable_tool_call(
+    trace: EvalTraceRecorder | None,
+    *,
+    perturbation: PerturbationConfig | None,
+    question_id: str,
+    call_counts: Counter[str],
+    name: str,
+    args: dict[str, Any],
+    call: Callable[[], dict[str, Any]],
+) -> dict[str, Any]:
+    occurrence_index = call_counts[name]
+    call_counts[name] += 1
+
+    def call_with_perturbation() -> dict[str, Any]:
+        result = call()
+        return _maybe_perturb_tool_result(
+            result,
+            trace=trace,
+            perturbation=perturbation,
+            question_id=question_id,
+            tool_name=name,
+            occurrence_index=occurrence_index,
+        )
+
+    return _trace_tool_call(
+        trace,
+        name=name,
+        args=args,
+        call=call_with_perturbation,
+    )
+
+
 @contextlib.contextmanager
-def restricted_mhealth_tool_pool(trace: EvalTraceRecorder | None = None) -> Iterator[None]:
+def restricted_mhealth_tool_pool(
+    trace: EvalTraceRecorder | None = None,
+    *,
+    perturbation: PerturbationConfig | None = None,
+    question_id: str | None = None,
+) -> Iterator[None]:
     """Expose state query tools plus the eval-safe builder wrapper during eval (state mode)."""
     import agent.reactive.pipeline as pipeline_mod
     import agent.reactive.planner as planner_mod
@@ -1494,6 +1646,8 @@ def restricted_mhealth_tool_pool(trace: EvalTraceRecorder | None = None) -> Iter
     original_planner_prompt = planner_mod.get_tools_prompt
     original_ecg_policy = planner_mod._apply_ecg_diagnosis_policy
     original_pipeline_call = pipeline_mod.call_tool
+    call_counts: Counter[str] = Counter()
+    sample_question_id = question_id or (trace.question_id if trace is not None else "")
 
     def allowed_tools() -> list[dict[str, Any]]:
         return [
@@ -1518,8 +1672,11 @@ def restricted_mhealth_tool_pool(trace: EvalTraceRecorder | None = None) -> Iter
             )
         if name == "state_list_contexts":
             effective_args = {}
-            return _trace_tool_call(
+            return _trace_perturbable_tool_call(
                 trace,
+                perturbation=perturbation,
+                question_id=sample_question_id,
+                call_counts=call_counts,
                 name=name,
                 args=effective_args,
                 call=lambda: registry_mod.call_tool(name),
@@ -1538,8 +1695,11 @@ def restricted_mhealth_tool_pool(trace: EvalTraceRecorder | None = None) -> Iter
                 },
             )
         effective_args = _filter_known_tool_kwargs(name, kwargs, allowed_tools())
-        return _trace_tool_call(
+        return _trace_perturbable_tool_call(
             trace,
+            perturbation=perturbation,
+            question_id=sample_question_id,
+            call_counts=call_counts,
             name=name,
             args=effective_args,
             call=lambda: registry_mod.call_tool(name, **effective_args),
@@ -1563,6 +1723,8 @@ def restricted_signal_tool_pool(
     trace: EvalTraceRecorder | None = None,
     dataset: str | None = None,
     adaptive_scope_enabled: bool = False,
+    perturbation: PerturbationConfig | None = None,
+    question_id: str | None = None,
 ) -> Iterator[None]:
     """Expose sanitized raw-signal analysis tools during eval."""
     import agent.reactive.pipeline as pipeline_mod
@@ -1574,6 +1736,8 @@ def restricted_signal_tool_pool(
     original_ecg_policy = planner_mod._apply_ecg_diagnosis_policy
     original_pipeline_call = pipeline_mod.call_tool
     original_previous_window_compare = pipeline_mod.compare_with_previous_window
+    call_counts: Counter[str] = Counter()
+    sample_question_id = question_id or (trace.question_id if trace is not None else "")
     allowed_tool_names = (
         RAW_SIGNAL_TOOL_NAMES_BY_DATASET.get(str(dataset), RAW_SIGNAL_TOOL_NAMES)
         if dataset is not None
@@ -1605,11 +1769,16 @@ def restricted_signal_tool_pool(
                 },
             )
         effective_args = _filter_known_tool_kwargs(name, kwargs, allowed_tools())
-        result = _trace_tool_call(
+        result = _trace_perturbable_tool_call(
             trace,
+            perturbation=perturbation,
+            question_id=sample_question_id,
+            call_counts=call_counts,
             name=name,
             args=effective_args,
-            call=lambda: sanitize_raw_tool_result(registry_mod.call_tool(name, **effective_args)),
+            call=lambda: sanitize_raw_tool_result(
+                registry_mod.call_tool(name, **effective_args)
+            ),
         )
         return result
 
@@ -1766,6 +1935,7 @@ def run_agent_sample(
     no_planner_seed: int = 42,
     no_planner_tool_count: int = 1,
     no_planner_tool_count_max: int | None = None,
+    perturbation: PerturbationConfig | None = None,
 ) -> dict[str, Any]:
     if dry_run:
         if trace is not None:
@@ -1820,6 +1990,9 @@ def run_agent_sample(
                     "no_planner_seed": no_planner_seed,
                     "no_planner_tool_count": no_planner_tool_count,
                     "no_planner_tool_count_max": no_planner_tool_count_max,
+                    "perturbation": (
+                        None if perturbation is None else perturbation.to_dict()
+                    ),
                 },
                 stdout=(
                     f"agent start data_mode={data_mode} dataset={raw_dataset} "
@@ -1833,9 +2006,15 @@ def run_agent_sample(
                 trace,
                 dataset=raw_dataset,
                 adaptive_scope_enabled=adaptive_scope_enabled,
+                perturbation=perturbation,
+                question_id=agent_input.question_id,
             )
         else:
-            tool_pool_context = restricted_mhealth_tool_pool(trace)
+            tool_pool_context = restricted_mhealth_tool_pool(
+                trace,
+                perturbation=perturbation,
+                question_id=agent_input.question_id,
+            )
         with traced_reactive_planner(trace), traced_validation_gate(trace), tool_pool_context:
             pipeline = ReactivePipeline()
             if no_validation_baseline:
@@ -2366,6 +2545,33 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--miss-ratio", type=float, default=0.25)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument(
+        "--perturb-rate",
+        type=float,
+        default=0.0,
+        help="Probability of eval-side tool-result perturbation per eligible tool call.",
+    )
+    parser.add_argument(
+        "--perturb-mode",
+        choices=["tool_failure", "empty_field"],
+        default="tool_failure",
+        help="How to corrupt an eligible tool result when perturbation fires.",
+    )
+    parser.add_argument(
+        "--perturb-target",
+        choices=["critical", "any"],
+        default="critical",
+        help=(
+            "critical: only ValidationGate.CRITICAL_TOOLS. any: every exposed "
+            "eval tool call is eligible."
+        ),
+    )
+    parser.add_argument(
+        "--perturb-seed",
+        type=int,
+        default=None,
+        help="Seed for deterministic perturbation decisions. Defaults to --seed.",
+    )
+    parser.add_argument(
         "--conditions",
         nargs="+",
         metavar="CONDITION",
@@ -2448,11 +2654,28 @@ def _validate_conditions(args: argparse.Namespace, parser: argparse.ArgumentPars
         )
 
 
+def _validate_perturbation_args(
+    args: argparse.Namespace,
+    parser: argparse.ArgumentParser,
+) -> None:
+    if not 0.0 <= args.perturb_rate <= 1.0:
+        parser.error("--perturb-rate must be between 0.0 and 1.0")
+    if args.perturb_seed is None:
+        args.perturb_seed = args.seed
+
+
 def main(argv: list[str] | None = None) -> int:
     cli_argv = list(sys.argv[1:] if argv is None else argv)
     parser = build_parser()
     args = parser.parse_args(cli_argv)
     _validate_conditions(args, parser)
+    _validate_perturbation_args(args, parser)
+    perturbation_config = PerturbationConfig(
+        rate=args.perturb_rate,
+        mode=args.perturb_mode,
+        target=args.perturb_target,
+        seed=args.perturb_seed,
+    )
     args.output_dir.mkdir(parents=True, exist_ok=True)
     run_started = time.monotonic()
     log_info("[VitalBench eval] Starting run", quiet=args.quiet)
@@ -2462,6 +2685,11 @@ def main(argv: list[str] | None = None) -> int:
         + ", ".join(args.conditions)
         + f" data_mode={args.agent_data_mode}"
         + (" trace_agent=on" if args.trace_agent else "")
+        + (
+            f" perturb_rate={args.perturb_rate}"
+            if perturbation_config.enabled
+            else ""
+        )
         + (" (dry-run)" if args.dry_run else ""),
         quiet=args.quiet,
     )
@@ -2621,6 +2849,7 @@ def main(argv: list[str] | None = None) -> int:
                 trace=trace,
                 benchmark_tier=sample.gt_metadata.get("tier"),
                 benchmark_target=str(target or ""),
+                perturbation=perturbation_config,
             )
             if trace is not None:
                 agent_trace_records.append(trace.to_record())
@@ -2699,6 +2928,7 @@ def main(argv: list[str] | None = None) -> int:
                 trace=trace,
                 benchmark_tier=sample.gt_metadata.get("tier"),
                 benchmark_target=str(target or ""),
+                perturbation=perturbation_config,
                 **run_kwargs,
             )
             if trace is not None:
@@ -2775,6 +3005,7 @@ def main(argv: list[str] | None = None) -> int:
                 no_planner_seed=args.seed,
                 no_planner_tool_count=args.agent_no_planner_tool_count,
                 no_planner_tool_count_max=args.agent_no_planner_tool_count_max,
+                perturbation=perturbation_config,
             )
             if trace is not None:
                 agent_trace_records.append(trace.to_record())
@@ -2830,6 +3061,10 @@ def main(argv: list[str] | None = None) -> int:
             f"--max-samples {args.max_samples}",
             f"--miss-ratio {args.miss_ratio}",
             f"--seed {args.seed}",
+            f"--perturb-rate {args.perturb_rate}",
+            f"--perturb-mode {args.perturb_mode}",
+            f"--perturb-target {args.perturb_target}",
+            f"--perturb-seed {args.perturb_seed}",
             "--conditions " + " ".join(args.conditions),
             f"--output-dir {args.output_dir}",
             *([] if args.dataset is None else [f"--dataset {args.dataset}"]),
@@ -2856,8 +3091,14 @@ def main(argv: list[str] | None = None) -> int:
         "source_manifest": str(args.source_manifest),
         "tier": args.tier,
         "max_samples": len(samples),
+        "limit_per_target": args.limit_per_target,
         "miss_ratio": args.miss_ratio,
         "seed": args.seed,
+        "perturb_rate": args.perturb_rate,
+        "perturb_mode": args.perturb_mode,
+        "perturb_target": args.perturb_target,
+        "perturb_seed": args.perturb_seed,
+        "perturbation": perturbation_config.to_dict(),
         "conditions": args.conditions,
         "agent_data_mode": args.agent_data_mode,
         "project_label_generated_state_facts": project_label_generated_state_facts,

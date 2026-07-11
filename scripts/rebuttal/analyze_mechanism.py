@@ -114,6 +114,20 @@ def _validation_events(trace_record: dict[str, Any] | None) -> list[dict[str, An
     ]
 
 
+def _perturbation_events(trace_record: dict[str, Any] | None) -> list[dict[str, Any]]:
+    if not isinstance(trace_record, dict):
+        return []
+    events = trace_record.get("events") or []
+    if not isinstance(events, list):
+        return []
+    return [
+        event
+        for event in events
+        if isinstance(event, dict)
+        and event.get("event") == "tool_perturbation_injected"
+    ]
+
+
 def enrich_predictions_with_trace_records(
     records: list[dict[str, Any]],
     trace_index: dict[tuple[str, str], dict[str, Any]],
@@ -134,6 +148,7 @@ def enrich_predictions_with_trace_records(
         "final_tool_names",
         "final_plan_signature",
         "plan_changed_after_replan",
+        "perturbation_count",
         "tool_call_count",
         "llm_call_count",
     )
@@ -152,6 +167,10 @@ def enrich_predictions_with_trace_records(
         if isinstance(trace_summary, dict):
             for key in summary_keys:
                 fill_if_missing(record, f"trace_{key}", trace_summary.get(key))
+
+        perturbation_events = _perturbation_events(trace_record)
+        if perturbation_events and record.get("trace_perturbation_count") is None:
+            record["trace_perturbation_count"] = len(perturbation_events)
 
         events = _validation_events(trace_record)
         if not events:
@@ -230,6 +249,13 @@ def fallback_correct(record: dict[str, Any]) -> bool:
     return score_true(record) and str(record.get("actual_path") or "") == "failure"
 
 
+def confident_wrong(record: dict[str, Any]) -> bool:
+    return (
+        record.get("score") is False
+        and str(record.get("actual_path") or "") != "failure"
+    )
+
+
 def trace_value(record: dict[str, Any], key: str) -> Any:
     flat_key = f"trace_{key}"
     if flat_key in record:
@@ -254,6 +280,18 @@ def replan_triggered(full_record: dict[str, Any]) -> bool:
 
 def plan_changed(full_record: dict[str, Any]) -> bool:
     return as_bool(trace_value(full_record, "plan_changed_after_replan"))
+
+
+def perturbation_count(record: dict[str, Any]) -> int:
+    value = trace_value(record, "perturbation_count")
+    if value is None:
+        value = record.get("trace_perturbation_count")
+    if value is None:
+        return 0
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return 0
 
 
 def _coverage_improved(first: Any, last: Any) -> bool | None:
@@ -353,6 +391,34 @@ def sorted_qids(qids: set[str] | list[str]) -> list[str]:
     return sorted(qids)
 
 
+def values_match(left: Any, right: Any, *, require_present: bool = True) -> bool:
+    if require_present and (left is None or right is None):
+        return False
+    return left == right
+
+
+def rescue_metrics_for_subset(
+    subset_qids: list[str],
+    *,
+    full_by_qid: dict[str, dict[str, Any]],
+    no_replan_by_qid: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    triggered = [qid for qid in subset_qids if replan_triggered(full_by_qid[qid])]
+    rescues = [
+        qid
+        for qid in triggered
+        if evidence_backed_correct(full_by_qid[qid])
+        and not evidence_backed_correct(no_replan_by_qid[qid])
+    ]
+    strict_rescues = [qid for qid in rescues if plan_changed(full_by_qid[qid])]
+    return {
+        "question_count": len(subset_qids),
+        "triggered_count": len(triggered),
+        "replan_rescue_rate": ratio(len(rescues), len(triggered)),
+        "replan_rescue_rate_strict": ratio(len(strict_rescues), len(triggered)),
+    }
+
+
 def analyze_slice(
     slice_name: str,
     requested_qids: set[str],
@@ -383,6 +449,58 @@ def analyze_slice(
         if not evidence_backed_correct(no_validation_by_qid[qid])
     ]
     triggered_qids = [qid for qid in qids if replan_triggered(full_by_qid[qid])]
+    initial_plan_signature_match_qids = [
+        qid
+        for qid in qids
+        if values_match(
+            trace_value(full_by_qid[qid], "initial_plan_signature"),
+            trace_value(no_replan_by_qid[qid], "initial_plan_signature"),
+        )
+    ]
+    initial_tool_names_match_qids = [
+        qid
+        for qid in qids
+        if values_match(
+            trace_value(full_by_qid[qid], "initial_tool_names"),
+            trace_value(no_replan_by_qid[qid], "initial_tool_names"),
+        )
+    ]
+    perturbation_count_match_qids = [
+        qid
+        for qid in qids
+        if perturbation_count(full_by_qid[qid])
+        == perturbation_count(no_replan_by_qid[qid])
+    ]
+    perturbation_count_match_qid_set = set(perturbation_count_match_qids)
+    perturbation_count_mismatch_qids = [
+        qid for qid in qids if qid not in perturbation_count_match_qid_set
+    ]
+    both_full_no_replan_perturbed_qids = [
+        qid
+        for qid in qids
+        if perturbation_count(full_by_qid[qid]) > 0
+        and perturbation_count(no_replan_by_qid[qid]) > 0
+    ]
+    any_condition_perturbed_qids = [
+        qid
+        for qid in qids
+        if any(
+            perturbation_count(joined[qid][condition]) > 0
+            for condition in REQUIRED_CONDITIONS
+        )
+    ]
+    strongest_matched_qids = [
+        qid
+        for qid in both_full_no_replan_perturbed_qids
+        if qid in initial_plan_signature_match_qids
+        and qid in perturbation_count_match_qid_set
+    ]
+    fallback_matched_qids = [
+        qid
+        for qid in both_full_no_replan_perturbed_qids
+        if qid in initial_tool_names_match_qids
+        and qid in perturbation_count_match_qid_set
+    ]
 
     attempt0_issue_histogram: Counter[str] = Counter()
     all_issue_histogram: Counter[str] = Counter()
@@ -598,10 +716,89 @@ def analyze_slice(
                     else mean_full_elapsed - mean_no_validation_elapsed
                 ),
             },
+            "matched_subsets": {
+                "loose_perturbed": rescue_metrics_for_subset(
+                    any_condition_perturbed_qids,
+                    full_by_qid=full_by_qid,
+                    no_replan_by_qid=no_replan_by_qid,
+                ),
+                "strongest_signature_and_perturbation_match": rescue_metrics_for_subset(
+                    strongest_matched_qids,
+                    full_by_qid=full_by_qid,
+                    no_replan_by_qid=no_replan_by_qid,
+                ),
+                "fallback_tool_names_and_perturbation_match": rescue_metrics_for_subset(
+                    fallback_matched_qids,
+                    full_by_qid=full_by_qid,
+                    no_replan_by_qid=no_replan_by_qid,
+                ),
+            },
         },
         "layer3_scoring_artifact": {
             "fallback_correct_rate": ratio(len(fallback_correct_full), len(qids)),
             "tool_failure_rate": ratio(len(tool_failure_qids), len(qids)),
+            "confident_wrong_rate": {
+                CONDITION_LABELS[condition]: ratio(
+                    sum(
+                        1
+                        for record in condition_records(condition)
+                        if confident_wrong(record)
+                    ),
+                    len(condition_records(condition)),
+                )
+                for condition in REQUIRED_CONDITIONS
+            },
+        },
+        "perturbation": {
+            "any_condition_perturbed_rate": ratio(
+                len(any_condition_perturbed_qids),
+                len(qids),
+            ),
+            "perturbed_rate_by_condition": {
+                CONDITION_LABELS[condition]: ratio(
+                    sum(
+                        1
+                        for record in condition_records(condition)
+                        if perturbation_count(record) > 0
+                    ),
+                    len(condition_records(condition)),
+                )
+                for condition in REQUIRED_CONDITIONS
+            },
+            "full_no_replan_perturbation_count_mismatch_rate": ratio(
+                len(perturbation_count_mismatch_qids),
+                len(qids),
+            ),
+            "initial_plan_signature_match_rate": ratio(
+                len(initial_plan_signature_match_qids),
+                len(qids),
+            ),
+            "initial_tool_names_match_rate": ratio(
+                len(initial_tool_names_match_qids),
+                len(qids),
+            ),
+            "ladder_tiers": {
+                "loose_perturbed_question_count": len(any_condition_perturbed_qids),
+                "strongest_question_count": len(strongest_matched_qids),
+                "fallback_question_count": len(fallback_matched_qids),
+            },
+            "question_helpers": {
+                qid: {
+                    "full_perturbation_count": perturbation_count(full_by_qid[qid]),
+                    "no_replan_perturbation_count": perturbation_count(
+                        no_replan_by_qid[qid]
+                    ),
+                    "no_validation_perturbation_count": perturbation_count(
+                        no_validation_by_qid[qid]
+                    ),
+                    "perturbation_count_match": qid
+                    in perturbation_count_match_qid_set,
+                    "initial_plan_signature_match": qid
+                    in initial_plan_signature_match_qids,
+                    "initial_tool_names_match": qid in initial_tool_names_match_qids,
+                }
+                for qid in qids
+            },
         },
         "case_counts": {name: len(values) for name, values in case_lists.items()},
         "case_lists": case_lists,
@@ -682,6 +879,19 @@ def fmt_delta(value: Any) -> str:
         return f"{float(value):+.2f}"
     except (TypeError, ValueError):
         return "n/a"
+
+
+def fmt_matched_subset_count(slice_report: dict[str, Any], subset_name: str) -> str:
+    subset = slice_report["layer2_repair"]["matched_subsets"][subset_name]
+    return f"{subset['question_count']}/{subset['triggered_count']}"
+
+
+def matched_subset_rate(
+    slice_report: dict[str, Any],
+    subset_name: str,
+    rate_name: str,
+) -> dict[str, Any]:
+    return slice_report["layer2_repair"]["matched_subsets"][subset_name][rate_name]
 
 
 def md_table(headers: list[str], rows: list[list[str]]) -> str:
@@ -779,6 +989,56 @@ def render_markdown(report: dict[str, Any]) -> str:
             ],
         )
     )
+    lines.extend(["", "## Layer 2 Matched Rescue", ""])
+    lines.append(
+        md_table(
+            [
+                "slice",
+                "loose n/trig",
+                "loose strict rescue",
+                "signature-match n/trig",
+                "signature strict rescue",
+                "tool-match n/trig",
+                "tool strict rescue",
+            ],
+            [
+                [
+                    name,
+                    fmt_matched_subset_count(item, "loose_perturbed"),
+                    fmt_rate(
+                        matched_subset_rate(
+                            item,
+                            "loose_perturbed",
+                            "replan_rescue_rate_strict",
+                        )
+                    ),
+                    fmt_matched_subset_count(
+                        item,
+                        "strongest_signature_and_perturbation_match",
+                    ),
+                    fmt_rate(
+                        matched_subset_rate(
+                            item,
+                            "strongest_signature_and_perturbation_match",
+                            "replan_rescue_rate_strict",
+                        )
+                    ),
+                    fmt_matched_subset_count(
+                        item,
+                        "fallback_tool_names_and_perturbation_match",
+                    ),
+                    fmt_rate(
+                        matched_subset_rate(
+                            item,
+                            "fallback_tool_names_and_perturbation_match",
+                            "replan_rescue_rate_strict",
+                        )
+                    ),
+                ]
+                for name, item in slices.items()
+            ],
+        )
+    )
     lines.extend(["", "## Layer 2 Overhead", ""])
     lines.append(
         md_table(
@@ -809,12 +1069,74 @@ def render_markdown(report: dict[str, Any]) -> str:
     lines.extend(["", "## Layer 3 Scoring Artifact", ""])
     lines.append(
         md_table(
-            ["slice", "fallback_correct_rate", "tool_failure_rate"],
+            [
+                "slice",
+                "fallback_correct_rate",
+                "tool_failure_rate",
+                "confident wrong full",
+                "confident wrong no_validation",
+                "confident wrong no_replan",
+            ],
             [
                 [
                     name,
                     fmt_rate(item["layer3_scoring_artifact"]["fallback_correct_rate"]),
                     fmt_rate(item["layer3_scoring_artifact"]["tool_failure_rate"]),
+                    fmt_rate(
+                        item["layer3_scoring_artifact"]["confident_wrong_rate"]["full"]
+                    ),
+                    fmt_rate(
+                        item["layer3_scoring_artifact"]["confident_wrong_rate"][
+                            "no_validation"
+                        ]
+                    ),
+                    fmt_rate(
+                        item["layer3_scoring_artifact"]["confident_wrong_rate"][
+                            "no_replan"
+                        ]
+                    ),
+                ]
+                for name, item in slices.items()
+            ],
+        )
+    )
+    lines.extend(["", "## Perturbation Comparability", ""])
+    lines.append(
+        md_table(
+            [
+                "slice",
+                "any perturbed",
+                "full perturbed",
+                "no_validation perturbed",
+                "no_replan perturbed",
+                "perturb count mismatch",
+                "signature match",
+                "tool-name match",
+            ],
+            [
+                [
+                    name,
+                    fmt_rate(item["perturbation"]["any_condition_perturbed_rate"]),
+                    fmt_rate(
+                        item["perturbation"]["perturbed_rate_by_condition"]["full"]
+                    ),
+                    fmt_rate(
+                        item["perturbation"]["perturbed_rate_by_condition"][
+                            "no_validation"
+                        ]
+                    ),
+                    fmt_rate(
+                        item["perturbation"]["perturbed_rate_by_condition"][
+                            "no_replan"
+                        ]
+                    ),
+                    fmt_rate(
+                        item["perturbation"][
+                            "full_no_replan_perturbation_count_mismatch_rate"
+                        ]
+                    ),
+                    fmt_rate(item["perturbation"]["initial_plan_signature_match_rate"]),
+                    fmt_rate(item["perturbation"]["initial_tool_names_match_rate"]),
                 ]
                 for name, item in slices.items()
             ],

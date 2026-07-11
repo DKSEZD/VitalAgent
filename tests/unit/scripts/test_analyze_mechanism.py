@@ -22,8 +22,11 @@ def _prediction(
     coverage_improved: bool | None = None,
     replan_triggered: bool = False,
     plan_changed_after_replan: bool = False,
+    initial_plan_signature: str | None = None,
+    initial_tool_names: list[str] | None = None,
+    perturbation_count: int | None = None,
 ) -> dict[str, object]:
-    return {
+    record: dict[str, object] = {
         "question_id": qid,
         "condition": condition,
         "score": score,
@@ -39,6 +42,13 @@ def _prediction(
         "trace_plan_changed_after_replan": plan_changed_after_replan,
         "trace_llm_call_count": llm_call_count,
     }
+    if initial_plan_signature is not None:
+        record["trace_initial_plan_signature"] = initial_plan_signature
+    if initial_tool_names is not None:
+        record["trace_initial_tool_names"] = initial_tool_names
+    if perturbation_count is not None:
+        record["trace_perturbation_count"] = perturbation_count
+    return record
 
 
 def _validation_event(
@@ -72,6 +82,20 @@ def _trace(
     }
 
 
+def _perturbation_event(
+    *,
+    tool_name: str,
+    occurrence_index: int = 0,
+    mode: str = "tool_failure",
+) -> dict[str, object]:
+    return {
+        "event": "tool_perturbation_injected",
+        "tool_name": tool_name,
+        "occurrence_index": occurrence_index,
+        "mode": mode,
+    }
+
+
 def _write_jsonl(path: Path, records: list[dict[str, object]]) -> None:
     path.write_text(
         "".join(json.dumps(record) + "\n" for record in records),
@@ -96,6 +120,9 @@ def test_analyze_mechanism_reports_layered_metrics_and_case_lists(tmp_path: Path
             coverage_improved=True,
             replan_triggered=True,
             plan_changed_after_replan=True,
+            initial_plan_signature="plan-rescue",
+            initial_tool_names=["tool_a"],
+            perturbation_count=1,
         ),
         _prediction(
             "q_rescue",
@@ -105,6 +132,8 @@ def test_analyze_mechanism_reports_layered_metrics_and_case_lists(tmp_path: Path
             total_tokens=100,
             llm_call_count=2,
             elapsed_sec=2.0,
+            initial_plan_signature="plan-rescue",
+            initial_tool_names=["tool_a"],
         ),
         _prediction(
             "q_rescue",
@@ -115,6 +144,9 @@ def test_analyze_mechanism_reports_layered_metrics_and_case_lists(tmp_path: Path
             llm_call_count=2,
             elapsed_sec=2.5,
             validation_first_passed=False,
+            initial_plan_signature="plan-rescue",
+            initial_tool_names=["tool_a"],
+            perturbation_count=1,
         ),
         _prediction(
             "q_fallback",
@@ -129,6 +161,9 @@ def test_analyze_mechanism_reports_layered_metrics_and_case_lists(tmp_path: Path
             validation_last_passed=True,
             validation_last_coverage=1.0,
             coverage_improved=False,
+            initial_plan_signature="plan-fallback",
+            initial_tool_names=["tool_c"],
+            perturbation_count=0,
         ),
         _prediction(
             "q_fallback",
@@ -138,6 +173,9 @@ def test_analyze_mechanism_reports_layered_metrics_and_case_lists(tmp_path: Path
             total_tokens=100,
             llm_call_count=2,
             elapsed_sec=1.0,
+            initial_plan_signature="plan-fallback",
+            initial_tool_names=["tool_c"],
+            perturbation_count=0,
         ),
         _prediction(
             "q_fallback",
@@ -148,6 +186,9 @@ def test_analyze_mechanism_reports_layered_metrics_and_case_lists(tmp_path: Path
             llm_call_count=2,
             elapsed_sec=1.0,
             validation_first_passed=True,
+            initial_plan_signature="plan-fallback",
+            initial_tool_names=["tool_c"],
+            perturbation_count=0,
         ),
         _prediction(
             "q_false_replan",
@@ -164,6 +205,9 @@ def test_analyze_mechanism_reports_layered_metrics_and_case_lists(tmp_path: Path
             coverage_improved=False,
             replan_triggered=True,
             plan_changed_after_replan=False,
+            initial_plan_signature="plan-false-full",
+            initial_tool_names=["tool_b"],
+            perturbation_count=2,
         ),
         _prediction(
             "q_false_replan",
@@ -173,6 +217,9 @@ def test_analyze_mechanism_reports_layered_metrics_and_case_lists(tmp_path: Path
             total_tokens=100,
             llm_call_count=2,
             elapsed_sec=1.0,
+            initial_plan_signature="plan-false-nv",
+            initial_tool_names=["tool_b"],
+            perturbation_count=1,
         ),
         _prediction(
             "q_false_replan",
@@ -183,6 +230,9 @@ def test_analyze_mechanism_reports_layered_metrics_and_case_lists(tmp_path: Path
             llm_call_count=2,
             elapsed_sec=1.0,
             validation_first_passed=False,
+            initial_plan_signature="plan-false-nr",
+            initial_tool_names=["tool_b"],
+            perturbation_count=1,
         ),
     ]
     traces = [
@@ -190,6 +240,7 @@ def test_analyze_mechanism_reports_layered_metrics_and_case_lists(tmp_path: Path
             "q_rescue",
             "agent",
             [
+                _perturbation_event(tool_name="tool_a"),
                 _validation_event(
                     "q_rescue",
                     attempt=0,
@@ -207,9 +258,16 @@ def test_analyze_mechanism_reports_layered_metrics_and_case_lists(tmp_path: Path
             ],
         ),
         _trace(
+            "q_rescue",
+            "agent_no_validation",
+            [_perturbation_event(tool_name="tool_a")],
+        ),
+        _trace(
             "q_false_replan",
             "agent",
             [
+                _perturbation_event(tool_name="tool_b"),
+                _perturbation_event(tool_name="tool_b", occurrence_index=1),
                 _validation_event(
                     "q_false_replan",
                     attempt=0,
@@ -291,6 +349,52 @@ def test_analyze_mechanism_reports_layered_metrics_and_case_lists(tmp_path: Path
     assert all_slice["layer2_repair"]["false_replan_rate"]["value"] == 0.5
     assert all_slice["layer3_scoring_artifact"]["fallback_correct_rate"]["value"] == 1 / 3
     assert all_slice["layer3_scoring_artifact"]["tool_failure_rate"]["value"] == 1 / 3
+    confident_wrong = all_slice["layer3_scoring_artifact"]["confident_wrong_rate"]
+    assert confident_wrong["full"]["value"] == 0.0
+    assert confident_wrong["no_validation"]["value"] == 1 / 3
+    assert confident_wrong["no_replan"]["value"] == 1 / 3
+    perturbation = all_slice["perturbation"]
+    assert perturbation["any_condition_perturbed_rate"]["value"] == 2 / 3
+    assert perturbation["perturbed_rate_by_condition"]["full"]["value"] == 2 / 3
+    assert (
+        perturbation["perturbed_rate_by_condition"]["no_validation"]["value"]
+        == 2 / 3
+    )
+    assert perturbation["perturbed_rate_by_condition"]["no_replan"]["value"] == 2 / 3
+    assert (
+        perturbation["full_no_replan_perturbation_count_mismatch_rate"]["value"]
+        == 1 / 3
+    )
+    assert perturbation["initial_plan_signature_match_rate"]["value"] == 2 / 3
+    assert perturbation["initial_tool_names_match_rate"]["value"] == 1.0
+    assert (
+        perturbation["question_helpers"]["q_rescue"][
+            "no_validation_perturbation_count"
+        ]
+        == 1
+    )
+    matched = all_slice["layer2_repair"]["matched_subsets"]
+    assert matched["loose_perturbed"]["question_count"] == 2
+    assert matched["loose_perturbed"]["triggered_count"] == 2
+    assert matched["loose_perturbed"]["replan_rescue_rate_strict"]["value"] == 0.5
+    assert (
+        matched["strongest_signature_and_perturbation_match"]["question_count"]
+        == 1
+    )
+    assert (
+        matched["strongest_signature_and_perturbation_match"]["triggered_count"]
+        == 1
+    )
+    assert (
+        matched["strongest_signature_and_perturbation_match"][
+            "replan_rescue_rate_strict"
+        ]["value"]
+        == 1.0
+    )
+    assert (
+        matched["fallback_tool_names_and_perturbation_match"]["question_count"]
+        == 1
+    )
     assert all_slice["case_lists"]["evidence_backed_replan_rescues"] == ["q_rescue"]
     assert all_slice["case_lists"]["strict_replan_rescues"] == ["q_rescue"]
     assert all_slice["case_lists"]["false_replans"] == ["q_false_replan"]
@@ -299,11 +403,13 @@ def test_analyze_mechanism_reports_layered_metrics_and_case_lists(tmp_path: Path
         "q_false_replan"
     ]
     assert all_slice["case_lists"]["tool_failure_cases"] == ["q_false_replan"]
-    assert (output_dir / "mechanism_report.md").exists()
+    markdown = (output_dir / "mechanism_report.md").read_text(encoding="utf-8")
+    assert "Layer 2 Matched Rescue" in markdown
+    assert "Perturbation Comparability" in markdown
+    assert "confident wrong no_validation" in markdown
     assert (output_dir / "strict_replan_rescues.txt").read_text(
         encoding="utf-8"
     ) == "q_rescue\n"
     assert (output_dir / "case_ids" / "tool_slice" / "tool_failure_cases.txt").read_text(
         encoding="utf-8"
     ) == "q_false_replan\n"
-
