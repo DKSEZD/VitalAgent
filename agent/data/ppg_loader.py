@@ -147,10 +147,17 @@ class PPGLoader:
 
     def available_patient_ids(self) -> list[str]:
         ids: set[str] = set()
-        for path in self.dataset_root.glob("*_ECG.mat"):
-            ids.add(path.stem.split("_", 1)[0])
-        for path in self.dataset_root.glob("*_PPG.mat"):
-            ids.add(path.stem.split("_", 1)[0])
+        for pattern in ("*_ECG.mat", "*_PPG.mat"):
+            for path in self.dataset_root.glob(pattern):
+                # macOS may create AppleDouble files such as ``._001_ECG.mat``.
+                # Only canonical dataset filenames with an all-numeric patient
+                # prefix are eligible for discovery.
+                if not path.is_file() or path.name.startswith("."):
+                    continue
+                patient_id = path.stem.split("_", 1)[0]
+                if not patient_id.isdigit():
+                    continue
+                ids.add(self.normalize_patient_id(patient_id))
         return sorted(ids)
 
     def patient_files_complete(self, patient_id: str | int) -> bool:

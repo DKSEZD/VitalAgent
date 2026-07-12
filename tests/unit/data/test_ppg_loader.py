@@ -238,6 +238,24 @@ def test_ppg_loader_reads_synthetic_patient(tmp_path: Path) -> None:
     assert alignment["all_ppg_chunks_inside_ecg_window"] is False
 
 
+def test_available_patient_ids_ignores_hidden_and_noncanonical_files(
+    tmp_path: Path,
+) -> None:
+    for name in (
+        "001_ECG.mat",
+        "001_PPG.mat",
+        "2_ECG.mat",
+        "._001_ECG.mat",
+        "._001_PPG.mat",
+        ".hidden_ECG.mat",
+        "patient003_ECG.mat",
+        "notes_PPG.mat",
+    ):
+        (tmp_path / name).touch()
+
+    assert PPGLoader(tmp_path).available_patient_ids() == ["001", "002"]
+
+
 def test_ppg_loader_summaries_from_synthetic_patient(tmp_path: Path) -> None:
     _create_ecg_file(tmp_path / "001_ECG.mat")
     _create_ppg_file(tmp_path / "001_PPG.mat")

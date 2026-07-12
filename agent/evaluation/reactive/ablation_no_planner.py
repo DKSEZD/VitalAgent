@@ -23,17 +23,19 @@ from agent.schemas import IntentType, Plan, PlanStep
 logger = logging.getLogger(__name__)
 
 
-RANDOM_TOOL_ARGS_SYSTEM_PROMPT = """\
-You are filling arguments for a pre-selected health-data tool.
+BATCHED_TOOL_ARGS_SYSTEM_PROMPT = """\
+You are filling arguments for a pre-selected list of health-data tools.
 
 Rules:
-- You MUST NOT change the tool name.
-- Return only a JSON object with this exact shape: {"tool_args": {...}}.
+- You MUST NOT add, remove, rename, or duplicate tools.
+- Return only a JSON object with this exact shape:
+  {"tool_calls": [{"tool_name": "...", "tool_args": {...}}, ...]}.
 - Use only argument names from the provided parameter schema.
 - Use the provided benchmark locator exactly for dataset, patient_id,
-  subject_id, recording_id, segment_id, window_start_s, and window_end_s.
+  subject_id, recording_id, segment_id, record_id, window_start_s,
+  window_end_s, anchor_window_start_s, and anchor_window_end_s.
 - If a parameter is optional and not needed, omit it.
-- If the schema is empty, return {"tool_args": {}}.
+- Include one entry for every pre-selected tool, in the given order.
 """
 
 
@@ -65,6 +67,8 @@ class NoPlannerPlanner:
         tool_count: int = 1,
         tool_count_max: int | None = None,
         tool_pool_names: set[str] | None = None,
+        selection_mode: str = "random",
+        canonical_context: dict[str, Any] | None = None,
         client: OpenAI | None = None,
         llm_service: LLMService | None = None,
         profile: LLMProfile | None = None,
@@ -72,6 +76,10 @@ class NoPlannerPlanner:
         self.seed = seed
         self.sample_key = sample_key
         self.tool_pool_names = tool_pool_names
+        if selection_mode not in {"random", "none", "all"}:
+            raise ValueError(f"Unsupported selection_mode: {selection_mode!r}")
+        self.selection_mode = selection_mode
+        self.canonical_context = dict(canonical_context or {})
         self.tool_count_min = max(1, int(tool_count))
         self.tool_count_max = max(
             self.tool_count_min,
@@ -90,20 +98,26 @@ class NoPlannerPlanner:
     ) -> tuple[Plan, dict[str, int]]:
         """Return a no-planner tool plan with LLM-filled arguments."""
 
-        if self.tool_pool_names is not None:
-            import agent.tools.registry as registry_mod
-
-            tools = [
-                _compact_tool_info(tool)
-                for tool in registry_mod.list_tools()
-                if tool["name"] in self.tool_pool_names
-            ]
-        else:
-            tools = [_compact_tool_info(tool) for tool in planner_mod.list_tools()]
+        tools = [
+            _compact_tool_info(tool)
+            for tool in planner_mod.list_tools()
+            if self.tool_pool_names is None or tool["name"] in self.tool_pool_names
+        ]
         tools = sorted(
             tools,
             key=lambda item: str(item.get("name")),
         )
+        if self.selection_mode == "none":
+            return (
+                Plan(
+                    intent=IntentType.STATUS_QUERY,
+                    reasoning="No-tools baseline: answer without tool-computed evidence.",
+                    steps=[],
+                    original_query=user_query,
+                ),
+                zero_usage(),
+            )
+
         if not tools:
             logger.warning("NoPlannerPlanner found no allowed tools")
             return (
@@ -116,29 +130,29 @@ class NoPlannerPlanner:
                 zero_usage(),
             )
 
-        rng = random.Random(_stable_seed(self.seed, self.sample_key or user_query))
-        selected_count = rng.randint(self.tool_count_min, self.tool_count_max)
-        selected = rng.sample(tools, k=min(selected_count, len(tools)))
+        if self.selection_mode == "all":
+            selected = tools
+        else:
+            rng = random.Random(_stable_seed(self.seed, self.sample_key or user_query))
+            selected_count = rng.randint(self.tool_count_min, self.tool_count_max)
+            selected = rng.sample(tools, k=min(selected_count, len(tools)))
 
-        usage_total = zero_usage()
+        args_by_tool, usage_total = self._generate_args_batch(
+            user_query=user_query,
+            tools=selected,
+            active_record_id=active_record_id,
+            extra_context=extra_context,
+        )
         steps: list[PlanStep] = []
         for step_id, tool in enumerate(selected, start=1):
-            args, usage = self._generate_args(
-                user_query=user_query,
-                tool=tool,
-                active_record_id=active_record_id,
-                extra_context=extra_context,
-            )
-            for key in usage_total:
-                usage_total[key] += int(usage.get(key, 0) or 0)
             steps.append(
                 PlanStep(
                     step_id=step_id,
                     tool_name=str(tool["name"]),
-                    tool_args=args,
+                    tool_args=args_by_tool[str(tool["name"])],
                     description=(
-                        "agent_no_planner selected this tool; the LLM filled "
-                        "only its arguments."
+                        f"No-planner {self.selection_mode} strategy pre-selected "
+                        "this tool; the LLM filled only its arguments."
                     ),
                 )
             )
@@ -147,9 +161,9 @@ class NoPlannerPlanner:
             Plan(
                 intent=IntentType.STATUS_QUERY,
                 reasoning=(
-                    f"agent_no_planner: selected {len(selected)} tool(s) "
-                    "without the semantic planner, then asked "
-                    "the LLM only for arguments."
+                    f"No-planner {self.selection_mode} strategy selected "
+                    f"{len(selected)} tool(s), then used one batched LLM call "
+                    "only for arguments."
                 ),
                 steps=steps,
                 original_query=user_query,
@@ -167,38 +181,88 @@ class NoPlannerPlanner:
 
         return previous_plan, zero_usage()
 
-    def _generate_args(
+    def _canonical_args(
+        self,
+        *,
+        tool: dict[str, Any],
+        active_record_id: str | None,
+    ) -> dict[str, Any]:
+        allowed = set((tool.get("parameters") or {}).keys())
+        context = self.canonical_context
+        window_start_s = context.get("window_start_s")
+        window_end_s = context.get("window_end_s")
+        patient_id = context.get("patient_id") or context.get("subject_id")
+        candidates = {
+            "dataset": context.get("dataset"),
+            "patient_id": patient_id,
+            "subject_id": patient_id,
+            "recording_id": context.get("recording_id"),
+            "segment_id": context.get("segment_id") or context.get("recording_id"),
+            "record_id": active_record_id,
+            "window_start_s": window_start_s,
+            "window_end_s": window_end_s,
+            "anchor_window_start_s": window_start_s,
+            "anchor_window_end_s": window_end_s,
+        }
+        return {
+            key: value
+            for key, value in candidates.items()
+            if key in allowed and value is not None
+        }
+
+    def _generate_args_batch(
         self,
         *,
         user_query: str,
-        tool: dict[str, Any],
+        tools: list[dict[str, Any]],
         active_record_id: str | None,
         extra_context: str,
-    ) -> tuple[dict[str, Any], dict[str, int]]:
+    ) -> tuple[dict[str, dict[str, Any]], dict[str, int]]:
         user_msg = (
             f"User question:\n{user_query}\n\n"
-            f"Pre-selected tool:\n{_safe_json(tool)}\n\n"
+            f"Pre-selected tools:\n{_safe_json(tools)}\n\n"
             f"Active record ID, if applicable: {active_record_id or ''}\n\n"
             f"Benchmark locator / extra context:\n{extra_context or '{}'}"
         )
         result = self.llm_service.complete(
             profile=self.profile,
             messages=[
-                {"role": "system", "content": RANDOM_TOOL_ARGS_SYSTEM_PROMPT},
+                {"role": "system", "content": BATCHED_TOOL_ARGS_SYSTEM_PROMPT},
                 {"role": "user", "content": user_msg},
             ],
         )
+        parsed_calls: dict[str, dict[str, Any]] = {}
         try:
             payload = json.loads(extract_json_object_text(result.text))
+            calls = payload.get("tool_calls", [])
+            if not isinstance(calls, list):
+                calls = []
+            selected_names = {str(tool["name"]) for tool in tools}
+            for item in calls:
+                if not isinstance(item, dict):
+                    continue
+                name = str(item.get("tool_name") or "")
+                if name not in selected_names or name in parsed_calls:
+                    continue
+                args = item.get("tool_args", {})
+                parsed_calls[name] = args if isinstance(args, dict) else {}
         except Exception:
             logger.warning(
-                "NoPlannerPlanner could not parse tool args JSON for %s: %r",
-                tool.get("name"),
+                "NoPlannerPlanner could not parse batched tool args JSON: %r",
                 result.text,
             )
-            return {}, result.usage
 
-        args = payload.get("tool_args", {})
-        if not isinstance(args, dict):
-            args = {}
-        return args, result.usage
+        args_by_tool: dict[str, dict[str, Any]] = {}
+        for tool in tools:
+            name = str(tool["name"])
+            allowed = set((tool.get("parameters") or {}).keys())
+            generated = {
+                key: value
+                for key, value in parsed_calls.get(name, {}).items()
+                if key in allowed
+            }
+            generated.update(
+                self._canonical_args(tool=tool, active_record_id=active_record_id)
+            )
+            args_by_tool[name] = generated
+        return args_by_tool, result.usage

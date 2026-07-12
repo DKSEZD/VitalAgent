@@ -12,7 +12,7 @@ import re
 import sys
 import time
 from collections import Counter, defaultdict
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable, Iterator
@@ -32,6 +32,7 @@ from agent.benchmarks.vitalbench.evaluator import (
 )
 from agent.config import get_config, resolved_config_snapshot
 from agent.llm import (
+    merge_usage,
     zero_usage,
 )
 from agent.mhealth.schemas import MonitoringState
@@ -249,12 +250,39 @@ TRACE_PREDICTION_SUMMARY_KEYS = (
     "tool_call_count",
     "llm_call_count",
 )
+MODEL_COST_KEYS = (
+    "planning_model_call_count",
+    "answer_model_call_count",
+    "planning_input_tokens",
+    "planning_output_tokens",
+    "answer_input_tokens",
+    "answer_output_tokens",
+)
 AGENT_LIKE_CONDITIONS = {
     "agent",
     "agent_no_validation",
     "agent_no_replan",
     "agent_no_planner",
+    "agent_no_tools",
+    "agent_all_tools",
 }
+
+
+def effective_raw_tool_names(
+    dataset: str | None,
+    *,
+    adaptive_scope_enabled: bool,
+) -> set[str]:
+    """Return the exact raw tool pool exposed for one evaluation sample."""
+
+    pool = set(
+        RAW_SIGNAL_TOOL_NAMES_BY_DATASET.get(str(dataset), RAW_SIGNAL_TOOL_NAMES)
+        if dataset is not None
+        else RAW_SIGNAL_TOOL_NAMES
+    )
+    if not adaptive_scope_enabled:
+        pool -= ADAPTIVE_SCOPE_TOOL_NAMES
+    return pool
 DEFAULT_VITALBENCH_DIR = get_config().datasets.vitalbench_root
 DEFAULT_QA_JSONL = DEFAULT_VITALBENCH_DIR / "qa.jsonl"
 DEFAULT_STATES_JSONL = DEFAULT_VITALBENCH_DIR / "states.jsonl"
@@ -265,6 +293,8 @@ VALID_EVAL_CONDITIONS = (
     "agent_no_validation",
     "agent_no_replan",
     "agent_no_planner",
+    "agent_no_tools",
+    "agent_all_tools",
 )
 
 
@@ -278,6 +308,65 @@ class ContextKey:
     dataset: str
     subject_id: str
     recording_id: str
+
+
+@dataclass
+class ModelCallTracker:
+    planning_model_call_count: int = 0
+    answer_model_call_count: int = 0
+    planning_usage: dict[str, int] = field(default_factory=zero_usage)
+    answer_usage: dict[str, int] = field(default_factory=zero_usage)
+
+    def begin(self, role: str) -> None:
+        if role == "planner":
+            self.planning_model_call_count += 1
+        else:
+            self.answer_model_call_count += 1
+
+    def add_usage(self, role: str, usage: dict[str, int] | None) -> None:
+        if not usage:
+            return
+        if role == "planner":
+            self.planning_usage = merge_usage(self.planning_usage, usage)
+        else:
+            self.answer_usage = merge_usage(self.answer_usage, usage)
+
+    def to_fields(self) -> dict[str, int]:
+        return {
+            "planning_model_call_count": self.planning_model_call_count,
+            "answer_model_call_count": self.answer_model_call_count,
+            "planning_input_tokens": int(self.planning_usage.get("input_tokens", 0)),
+            "planning_output_tokens": int(self.planning_usage.get("output_tokens", 0)),
+            "answer_input_tokens": int(self.answer_usage.get("input_tokens", 0)),
+            "answer_output_tokens": int(self.answer_usage.get("output_tokens", 0)),
+        }
+
+
+def attach_model_call_tracker(service: Any, tracker: ModelCallTracker) -> None:
+    """Track logical model invocations on this pipeline-local LLM service."""
+
+    original_complete = service.complete
+    original_stream = service.stream
+
+    def tracked_complete(*, profile: Any, messages: list[dict[str, str]]) -> Any:
+        role = str(getattr(profile, "role", ""))
+        tracker.begin(role)
+        result = original_complete(profile=profile, messages=messages)
+        tracker.add_usage(role, getattr(result, "usage", None))
+        return result
+
+    def tracked_stream(*, profile: Any, messages: list[dict[str, str]]) -> Iterator[Any]:
+        role = str(getattr(profile, "role", ""))
+        tracker.begin(role)
+        final_usage: dict[str, int] | None = None
+        for event in original_stream(profile=profile, messages=messages):
+            if getattr(event, "usage", None) is not None:
+                final_usage = event.usage
+            yield event
+        tracker.add_usage(role, final_usage)
+
+    service.complete = tracked_complete
+    service.stream = tracked_stream
 
 
 @dataclass
@@ -1024,6 +1113,10 @@ def trace_prediction_fields(trace_summary: dict[str, Any] | None) -> dict[str, A
     }
 
 
+def model_cost_prediction_fields(agent_result: dict[str, Any]) -> dict[str, int]:
+    return {key: int(agent_result.get(key, 0) or 0) for key in MODEL_COST_KEYS}
+
+
 @register_tool(
     name=SAFE_BUILD_TOOL,
     description=(
@@ -1738,13 +1831,10 @@ def restricted_signal_tool_pool(
     original_previous_window_compare = pipeline_mod.compare_with_previous_window
     call_counts: Counter[str] = Counter()
     sample_question_id = question_id or (trace.question_id if trace is not None else "")
-    allowed_tool_names = (
-        RAW_SIGNAL_TOOL_NAMES_BY_DATASET.get(str(dataset), RAW_SIGNAL_TOOL_NAMES)
-        if dataset is not None
-        else RAW_SIGNAL_TOOL_NAMES
+    allowed_tool_names = effective_raw_tool_names(
+        dataset,
+        adaptive_scope_enabled=adaptive_scope_enabled,
     )
-    if not adaptive_scope_enabled:
-        allowed_tool_names = set(allowed_tool_names) - ADAPTIVE_SCOPE_TOOL_NAMES
 
     def allowed_tools() -> list[dict[str, Any]]:
         return [
@@ -1932,6 +2022,7 @@ def run_agent_sample(
     no_validation_baseline: bool = False,
     no_replan_baseline: bool = False,
     no_planner_baseline: bool = False,
+    no_planner_selection_mode: str = "random",
     no_planner_seed: int = 42,
     no_planner_tool_count: int = 1,
     no_planner_tool_count_max: int | None = None,
@@ -1951,6 +2042,7 @@ def run_agent_sample(
             "query_success": None,
             "error_class": "unknown",
             "error_message": None,
+            **ModelCallTracker().to_fields(),
             "trace_summary": trace.summarize() if trace is not None else None,
         }
 
@@ -1974,6 +2066,7 @@ def run_agent_sample(
     )
     answer_started: float | None = None
     answer_first_token_recorded = False
+    model_call_tracker = ModelCallTracker()
     try:
         if trace is not None:
             trace.add(
@@ -1987,6 +2080,7 @@ def run_agent_sample(
                     "no_validation_baseline": no_validation_baseline,
                     "no_replan_baseline": no_replan_baseline,
                     "no_planner_baseline": no_planner_baseline,
+                    "no_planner_selection_mode": no_planner_selection_mode,
                     "no_planner_seed": no_planner_seed,
                     "no_planner_tool_count": no_planner_tool_count,
                     "no_planner_tool_count_max": no_planner_tool_count_max,
@@ -2017,6 +2111,8 @@ def run_agent_sample(
             )
         with traced_reactive_planner(trace), traced_validation_gate(trace), tool_pool_context:
             pipeline = ReactivePipeline()
+            if getattr(pipeline, "llm_service", None) is not None:
+                attach_model_call_tracker(pipeline.llm_service, model_call_tracker)
             if no_validation_baseline:
                 pipeline.disable_validation = True
                 if trace is not None:
@@ -2041,8 +2137,17 @@ def run_agent_sample(
                     sample_key=effective_agent_input.question_id,
                     tool_count=no_planner_tool_count,
                     tool_count_max=no_planner_tool_count_max,
+                    selection_mode=no_planner_selection_mode,
+                    canonical_context=pipeline._active_context_from_agent_input(
+                        effective_agent_input
+                    ),
                     tool_pool_names=(
-                        RAW_SIGNAL_TOOL_NAMES if data_mode == "raw" else None
+                        effective_raw_tool_names(
+                            raw_dataset,
+                            adaptive_scope_enabled=adaptive_scope_enabled,
+                        )
+                        if data_mode == "raw"
+                        else None
                     ),
                 )
                 pipeline.disable_validation = True
@@ -2054,9 +2159,11 @@ def run_agent_sample(
                             "seed": no_planner_seed,
                             "tool_count": no_planner_tool_count,
                             "tool_count_max": no_planner_tool_count_max,
+                            "selection_mode": no_planner_selection_mode,
                         },
                         stdout=(
-                            "agent_no_planner baseline enabled "
+                            "no-planner tool strategy enabled "
+                            f"mode={no_planner_selection_mode} "
                             f"seed={no_planner_seed} count={no_planner_tool_count}"
                             + (
                                 ""
@@ -2113,12 +2220,15 @@ def run_agent_sample(
             "query_success": None,
             "error_class": "planner_issue" if error_message else "unknown",
             "error_message": error_message,
+            **model_call_tracker.to_fields(),
             "trace_summary": trace.summarize() if trace is not None else None,
         }
 
     tool_results = list(final.context_used.get("tool_results") or [])
     token_usage = normalize_token_usage(final.context_used.get("token_usage"))
     actual_path, names, build_success, query_success = infer_actual_path(tool_results)
+    if no_planner_baseline and no_planner_selection_mode == "none":
+        actual_path = "direct_answer"
     if trace is not None:
         answer_duration = None if answer_started is None else time.monotonic() - answer_started
         trace.add(
@@ -2152,6 +2262,7 @@ def run_agent_sample(
         "query_success": query_success,
         "error_class": None,
         "error_message": error_message,
+        **model_call_tracker.to_fields(),
         "trace_summary": trace.summarize() if trace is not None else None,
     }
 
@@ -2200,11 +2311,19 @@ def aggregate_predictions(records: list[dict[str, Any]], condition: str) -> dict
             "build": routing.get("build", 0),
             "build_then_query": routing.get("build_then_query", 0),
             "signal_query": routing.get("signal_query", 0),
+            "direct_answer": routing.get("direct_answer", 0),
             "failure": routing.get("failure", 0),
         }
         aggregate["accuracy_by_actual_path"] = {
             path: _accuracy([record for record in subset if record.get("actual_path") == path])
-            for path in ["query", "build", "build_then_query", "signal_query", "failure"]
+            for path in [
+                "query",
+                "build",
+                "build_then_query",
+                "signal_query",
+                "direct_answer",
+                "failure",
+            ]
         }
         aggregate["accuracy_by_expected_path"] = {
             path: _accuracy([record for record in subset if record.get("expected_path") == path])
@@ -2874,6 +2993,7 @@ def main(argv: list[str] | None = None) -> int:
                     "score": score,
                     "numeric_match_method": numeric_match_method,
                     **normalize_token_usage(agent_result.get("token_usage")),
+                    **model_cost_prediction_fields(agent_result),
                     "actual_path": agent_result["actual_path"],
                     "actual_tools_called": agent_result["actual_tools_called"],
                     "build_success": agent_result["build_success"],
@@ -2954,6 +3074,7 @@ def main(argv: list[str] | None = None) -> int:
                     "score": score,
                     "numeric_match_method": numeric_match_method,
                     **normalize_token_usage(agent_result.get("token_usage")),
+                    **model_cost_prediction_fields(agent_result),
                     "actual_path": agent_result["actual_path"],
                     "actual_tools_called": agent_result["actual_tools_called"],
                     "build_success": agent_result["build_success"],
@@ -2968,11 +3089,19 @@ def main(argv: list[str] | None = None) -> int:
                 }
             )
 
-        if "agent_no_planner" in args.conditions:
+        tool_strategy_conditions = (
+            ("agent_no_planner", "random"),
+            ("agent_no_tools", "none"),
+            ("agent_all_tools", "all"),
+        )
+        for condition_name, selection_mode in tool_strategy_conditions:
+            if condition_name not in args.conditions:
+                continue
             condition_started = time.monotonic()
             log_info(
-                "[VitalBench eval]   agent_no_planner start "
-                f"seed={args.seed} count={args.agent_no_planner_tool_count}"
+                f"[VitalBench eval]   {condition_name} start "
+                f"mode={selection_mode} seed={args.seed} "
+                f"count={args.agent_no_planner_tool_count}"
                 + (
                     ""
                     if args.agent_no_planner_tool_count_max is None
@@ -2983,7 +3112,7 @@ def main(argv: list[str] | None = None) -> int:
             trace = (
                 EvalTraceRecorder(
                     agent_input.question_id,
-                    condition="agent_no_planner",
+                    condition=condition_name,
                     tier=str(sample.gt_metadata.get("tier") or ""),
                     template_id=str(sample.gt_metadata.get("template_id") or ""),
                     target=str(target or ""),
@@ -3002,6 +3131,7 @@ def main(argv: list[str] | None = None) -> int:
                 benchmark_tier=sample.gt_metadata.get("tier"),
                 benchmark_target=str(target or ""),
                 no_planner_baseline=True,
+                no_planner_selection_mode=selection_mode,
                 no_planner_seed=args.seed,
                 no_planner_tool_count=args.agent_no_planner_tool_count,
                 no_planner_tool_count_max=args.agent_no_planner_tool_count_max,
@@ -3015,7 +3145,7 @@ def main(argv: list[str] | None = None) -> int:
             )
             condition_elapsed = time.monotonic() - condition_started
             log_info(
-                "[VitalBench eval]   agent_no_planner done "
+                f"[VitalBench eval]   {condition_name} done "
                 f"score={score} actual_path={agent_result['actual_path']} "
                 f"tools={agent_result['actual_tools_called']} "
                 f"elapsed={condition_elapsed:.1f}s",
@@ -3025,11 +3155,12 @@ def main(argv: list[str] | None = None) -> int:
             predictions.append(
                 {
                     **base,
-                    "condition": "agent_no_planner",
+                    "condition": condition_name,
                     "prediction": agent_result["prediction"],
                     "score": score,
                     "numeric_match_method": numeric_match_method,
                     **normalize_token_usage(agent_result.get("token_usage")),
+                    **model_cost_prediction_fields(agent_result),
                     "actual_path": agent_result["actual_path"],
                     "actual_tools_called": agent_result["actual_tools_called"],
                     "build_success": agent_result["build_success"],
@@ -3043,6 +3174,7 @@ def main(argv: list[str] | None = None) -> int:
                     "agent_no_planner_seed": args.seed,
                     "agent_no_planner_tool_count": args.agent_no_planner_tool_count,
                     "agent_no_planner_tool_count_max": args.agent_no_planner_tool_count_max,
+                    "agent_no_planner_selection_mode": selection_mode,
                 }
             )
 

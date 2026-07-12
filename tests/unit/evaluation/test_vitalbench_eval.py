@@ -4,6 +4,7 @@ import contextlib
 import json
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 
 from agent.benchmarks.vitalbench.eval_loader import (
     AgentInput,
@@ -587,6 +588,8 @@ def test_remaining_agent_ablation_conditions_dry_run_write_records(tmp_path: Pat
             "--conditions",
             "agent_no_validation",
             "agent_no_replan",
+            "agent_no_tools",
+            "agent_all_tools",
             "--output-dir",
             str(output_dir),
             "--dry-run",
@@ -601,10 +604,19 @@ def test_remaining_agent_ablation_conditions_dry_run_write_records(tmp_path: Pat
     assert [record["condition"] for record in records] == [
         "agent_no_validation",
         "agent_no_replan",
+        "agent_no_tools",
+        "agent_all_tools",
     ]
+    assert all(record["planning_model_call_count"] == 0 for record in records)
+    assert all(record["answer_model_call_count"] == 0 for record in records)
     eval_payload = json.loads((output_dir / "eval.json").read_text(encoding="utf-8"))
     assert eval_payload["limit_per_target"] == 30
-    assert set(eval_payload["aggregate"]) == {"agent_no_validation", "agent_no_replan"}
+    assert set(eval_payload["aggregate"]) == {
+        "agent_no_validation",
+        "agent_no_replan",
+        "agent_no_tools",
+        "agent_all_tools",
+    }
     assert set(eval_payload["resolved_config"]["llm_profiles"]) == {
         "agent",
         "planner",
@@ -651,6 +663,75 @@ def test_filter_samples_allows_supported_dataset_filter(tmp_path: Path) -> None:
     )
 
     assert [sample.agent_input.question_id for sample in wesad_only] == ["q_wesad"]
+
+
+def test_effective_raw_tool_names_is_dataset_and_scope_specific() -> None:
+    ppg_dalia = eval_mod.effective_raw_tool_names(
+        "ppg_dalia",
+        adaptive_scope_enabled=False,
+    )
+    af_current = eval_mod.effective_raw_tool_names(
+        "afppgecg",
+        adaptive_scope_enabled=False,
+    )
+    af_adaptive = eval_mod.effective_raw_tool_names(
+        "afppgecg",
+        adaptive_scope_enabled=True,
+    )
+
+    assert ppg_dalia == {
+        "analyze_ppg_dalia_window_signal",
+        "evaluate_proactive_rules",
+    }
+    assert "analyze_wesad_window_signal" not in ppg_dalia
+    assert "analyze_afppgecg_rhythm_context" not in af_current
+    assert "analyze_afppgecg_rhythm_context" in af_adaptive
+
+
+def test_model_call_tracker_counts_actual_roles_and_usage() -> None:
+    planning_usage = {
+        "input_tokens": 3,
+        "cached_input_tokens": 0,
+        "output_tokens": 2,
+        "total_tokens": 5,
+    }
+    answer_usage = {
+        "input_tokens": 7,
+        "cached_input_tokens": 0,
+        "output_tokens": 4,
+        "total_tokens": 11,
+    }
+
+    class FakeService:
+        def complete(self, *, profile, messages):
+            del messages
+            usage = planning_usage if profile.role == "planner" else answer_usage
+            return SimpleNamespace(text="{}", usage=usage)
+
+        def stream(self, *, profile, messages):
+            del profile, messages
+            yield LLMStreamEvent(delta="answer")
+            yield LLMStreamEvent(usage=answer_usage)
+
+    tracker = eval_mod.ModelCallTracker()
+    service = FakeService()
+    eval_mod.attach_model_call_tracker(service, tracker)
+    planner_profile = SimpleNamespace(role="planner")
+    agent_profile = SimpleNamespace(role="agent")
+
+    service.complete(profile=planner_profile, messages=[])
+    service.complete(profile=planner_profile, messages=[])
+    list(service.stream(profile=agent_profile, messages=[]))
+    service.complete(profile=agent_profile, messages=[])
+
+    assert tracker.to_fields() == {
+        "planning_model_call_count": 2,
+        "answer_model_call_count": 2,
+        "planning_input_tokens": 6,
+        "planning_output_tokens": 4,
+        "answer_input_tokens": 14,
+        "answer_output_tokens": 8,
+    }
 
 
 def test_agent_sample_uses_only_agent_input_boundary(monkeypatch) -> None:
