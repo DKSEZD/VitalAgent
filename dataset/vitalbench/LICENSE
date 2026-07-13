@@ -1,0 +1,34 @@
+# VitalBench data license
+
+The VitalAgent source code is licensed separately under the MIT License in the
+repository root.
+
+To the extent that copyright or database rights apply, the VitalBench benchmark
+artifacts in this directory are made available under the Creative Commons
+Attribution-NonCommercial-ShareAlike 4.0 International license
+(CC BY-NC-SA 4.0):
+
+https://creativecommons.org/licenses/by-nc-sa/4.0/
+
+This license applies to the authors' contributions and adaptations only. It
+does not replace or weaken the terms of the source datasets. Users must comply
+with all applicable source-dataset licenses, attribution requirements, and
+usage restrictions. In particular, commercial use is not granted for material
+derived from sources licensed for non-commercial use.
+
+No raw physiological recordings are redistributed in this repository.
+VitalBench contains generated questions, answers, monitoring states, metadata,
+and evaluation splits derived from the following sources:
+
+- Icentia11k Single Lead Continuous Raw Electrocardiogram Dataset, version 1.0
+  (CC BY-NC-SA 4.0), https://doi.org/10.13026/kk0v-r952
+- Long-term electrocardiogram and wrist-based photoplethysmogram recordings
+  with annotated atrial fibrillation episodes (CC BY-NC-SA 4.0),
+  https://doi.org/10.5281/zenodo.11242869
+- PPG-DaLiA (CC BY 4.0), https://doi.org/10.24432/C53890
+- WESAD (Wearable Stress and Affect Detection),
+  https://doi.org/10.24432/C57K5T; consult the linked original dataset terms
+
+When redistributing or adapting VitalBench, retain this notice, identify any
+changes, cite the applicable source datasets, and cite the VitalAgent paper as
+described in the repository README.
