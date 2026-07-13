@@ -104,9 +104,33 @@ uv run vitalbench-eval --conditions agent --tier A --max-samples 50 \
 ```
 
 Reactive conditions: `agent`, `agent_no_validation`, `agent_no_replan`,
-`agent_no_planner`.
+`agent_no_planner`, `agent_no_tools`, `agent_all_tools`, and the frozen
+`agent_no_planner_paper_v1` reproduction condition.
 The evaluator uses raw-signal mode by default. Add `--dataset <name>` to filter
 to one dataset, and run `uv run vitalbench-eval --help` for all options.
+
+Two explicit evaluation protocols keep submitted-paper reproduction separate
+from the revised rebuttal experiments:
+
+```bash
+# Submitted Table 7 protocol. Perturbation and rebuttal-v2 tool strategies are
+# intentionally rejected in this mode.
+uv run vitalbench-eval --evaluation-protocol paper_v1 \
+    --conditions agent agent_no_validation agent_no_replan \
+    agent_no_planner_paper_v1 --tier A --output-dir ./out/paper_v1
+
+# Revised tool-strategy comparison. This is the default protocol.
+uv run vitalbench-eval --evaluation-protocol rebuttal_v2 \
+    --conditions agent_no_validation agent_no_planner agent_no_tools \
+    agent_all_tools --tier A --output-dir ./out/rebuttal_v2
+```
+
+`paper_v1` freezes the submitted random-tool selection/argument-filling logic
+and validation configuration from `main@2ed4008`. `rebuttal_v2` uses the
+per-dataset applicable tool pool, batched argument filling, canonical locator
+overrides, and the no-tools/all-tools strategies. Every prediction, trace, and
+`eval.json` records the active protocol; results from the two protocols should
+not be mixed in one comparison table.
 
 ### Proactive evaluation
 

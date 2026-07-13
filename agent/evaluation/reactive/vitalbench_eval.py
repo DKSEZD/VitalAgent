@@ -258,11 +258,13 @@ MODEL_COST_KEYS = (
     "answer_input_tokens",
     "answer_output_tokens",
 )
+EVALUATION_PROTOCOLS = ("paper_v1", "rebuttal_v2")
 AGENT_LIKE_CONDITIONS = {
     "agent",
     "agent_no_validation",
     "agent_no_replan",
     "agent_no_planner",
+    "agent_no_planner_paper_v1",
     "agent_no_tools",
     "agent_all_tools",
 }
@@ -293,6 +295,7 @@ VALID_EVAL_CONDITIONS = (
     "agent_no_validation",
     "agent_no_replan",
     "agent_no_planner",
+    "agent_no_planner_paper_v1",
     "agent_no_tools",
     "agent_all_tools",
 )
@@ -503,6 +506,7 @@ class EvalTraceRecorder:
         question_id: str,
         *,
         condition: str | None = None,
+        evaluation_protocol: str | None = None,
         tier: str | None = None,
         template_id: str | None = None,
         target: str | None = None,
@@ -512,6 +516,7 @@ class EvalTraceRecorder:
     ):
         self.question_id = question_id
         self.condition = condition
+        self.evaluation_protocol = evaluation_protocol
         self.tier = tier
         self.template_id = template_id
         self.target = target
@@ -709,6 +714,7 @@ class EvalTraceRecorder:
         return {
             "question_id": self.question_id,
             "condition": self.condition,
+            "evaluation_protocol": self.evaluation_protocol,
             "tier": self.tier,
             "template_id": self.template_id,
             "target": self.target,
@@ -2019,9 +2025,11 @@ def run_agent_sample(
     trace: EvalTraceRecorder | None = None,
     benchmark_tier: str | None = None,
     benchmark_target: str | None = None,
+    evaluation_protocol: str = "rebuttal_v2",
     no_validation_baseline: bool = False,
     no_replan_baseline: bool = False,
     no_planner_baseline: bool = False,
+    no_planner_implementation: str = "rebuttal_v2",
     no_planner_selection_mode: str = "random",
     no_planner_seed: int = 42,
     no_planner_tool_count: int = 1,
@@ -2076,10 +2084,12 @@ def run_agent_sample(
                     "dataset": raw_dataset,
                     "benchmark_tier": benchmark_tier,
                     "benchmark_target": benchmark_target,
+                    "evaluation_protocol": evaluation_protocol,
                     "adaptive_scope_enabled": adaptive_scope_enabled,
                     "no_validation_baseline": no_validation_baseline,
                     "no_replan_baseline": no_replan_baseline,
                     "no_planner_baseline": no_planner_baseline,
+                    "no_planner_implementation": no_planner_implementation,
                     "no_planner_selection_mode": no_planner_selection_mode,
                     "no_planner_seed": no_planner_seed,
                     "no_planner_tool_count": no_planner_tool_count,
@@ -2111,6 +2121,10 @@ def run_agent_sample(
             )
         with traced_reactive_planner(trace), traced_validation_gate(trace), tool_pool_context:
             pipeline = ReactivePipeline()
+            if evaluation_protocol == "paper_v1":
+                from agent.evaluation.reactive.protocols import PaperV1ValidationGate
+
+                pipeline.validator = PaperV1ValidationGate()
             if getattr(pipeline, "llm_service", None) is not None:
                 attach_model_call_tracker(pipeline.llm_service, model_call_tracker)
             if no_validation_baseline:
@@ -2129,27 +2143,45 @@ def run_agent_sample(
                         stdout="no-replan baseline enabled",
                     )
             if no_planner_baseline:
-                from agent.evaluation.reactive.ablation_no_planner import NoPlannerPlanner
+                if no_planner_implementation == "paper_v1":
+                    from agent.evaluation.reactive.protocols import (
+                        PaperV1NoPlannerPlanner,
+                    )
 
-                pipeline.planner = NoPlannerPlanner(
-                    llm_service=pipeline.llm_service,
-                    seed=no_planner_seed,
-                    sample_key=effective_agent_input.question_id,
-                    tool_count=no_planner_tool_count,
-                    tool_count_max=no_planner_tool_count_max,
-                    selection_mode=no_planner_selection_mode,
-                    canonical_context=pipeline._active_context_from_agent_input(
-                        effective_agent_input
-                    ),
-                    tool_pool_names=(
-                        effective_raw_tool_names(
-                            raw_dataset,
-                            adaptive_scope_enabled=adaptive_scope_enabled,
-                        )
-                        if data_mode == "raw"
-                        else None
-                    ),
-                )
+                    pipeline.planner = PaperV1NoPlannerPlanner(
+                        llm_service=pipeline.llm_service,
+                        seed=no_planner_seed,
+                        sample_key=effective_agent_input.question_id,
+                        tool_count=no_planner_tool_count,
+                        tool_count_max=no_planner_tool_count_max,
+                        tool_pool_names=(
+                            RAW_SIGNAL_TOOL_NAMES if data_mode == "raw" else None
+                        ),
+                    )
+                else:
+                    from agent.evaluation.reactive.ablation_no_planner import (
+                        NoPlannerPlanner,
+                    )
+
+                    pipeline.planner = NoPlannerPlanner(
+                        llm_service=pipeline.llm_service,
+                        seed=no_planner_seed,
+                        sample_key=effective_agent_input.question_id,
+                        tool_count=no_planner_tool_count,
+                        tool_count_max=no_planner_tool_count_max,
+                        selection_mode=no_planner_selection_mode,
+                        canonical_context=pipeline._active_context_from_agent_input(
+                            effective_agent_input
+                        ),
+                        tool_pool_names=(
+                            effective_raw_tool_names(
+                                raw_dataset,
+                                adaptive_scope_enabled=adaptive_scope_enabled,
+                            )
+                            if data_mode == "raw"
+                            else None
+                        ),
+                    )
                 pipeline.disable_validation = True
                 pipeline.max_retries = 0
                 if trace is not None:
@@ -2159,10 +2191,12 @@ def run_agent_sample(
                             "seed": no_planner_seed,
                             "tool_count": no_planner_tool_count,
                             "tool_count_max": no_planner_tool_count_max,
+                            "implementation": no_planner_implementation,
                             "selection_mode": no_planner_selection_mode,
                         },
                         stdout=(
                             "no-planner tool strategy enabled "
+                            f"implementation={no_planner_implementation} "
                             f"mode={no_planner_selection_mode} "
                             f"seed={no_planner_seed} count={no_planner_tool_count}"
                             + (
@@ -2691,6 +2725,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="Seed for deterministic perturbation decisions. Defaults to --seed.",
     )
     parser.add_argument(
+        "--evaluation-protocol",
+        choices=EVALUATION_PROTOCOLS,
+        default="rebuttal_v2",
+        help=(
+            "paper_v1 reproduces the submitted evaluation semantics; "
+            "rebuttal_v2 enables the revised rebuttal protocol."
+        ),
+    )
+    parser.add_argument(
         "--conditions",
         nargs="+",
         metavar="CONDITION",
@@ -2773,6 +2816,28 @@ def _validate_conditions(args: argparse.Namespace, parser: argparse.ArgumentPars
         )
 
 
+def _validate_protocol_args(
+    args: argparse.Namespace,
+    parser: argparse.ArgumentParser,
+) -> None:
+    if args.evaluation_protocol == "paper_v1":
+        incompatible = sorted(
+            set(args.conditions) & {"agent_no_planner", "agent_no_tools", "agent_all_tools"}
+        )
+        if incompatible:
+            parser.error(
+                "paper_v1 does not support rebuttal-v2 condition(s): "
+                + ", ".join(incompatible)
+                + ". Use agent_no_planner_paper_v1 for the submitted random-tool ablation."
+            )
+        if args.perturb_rate != 0.0:
+            parser.error("paper_v1 requires --perturb-rate 0")
+    elif "agent_no_planner_paper_v1" in args.conditions:
+        parser.error(
+            "agent_no_planner_paper_v1 requires --evaluation-protocol paper_v1"
+        )
+
+
 def _validate_perturbation_args(
     args: argparse.Namespace,
     parser: argparse.ArgumentParser,
@@ -2788,6 +2853,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(cli_argv)
     _validate_conditions(args, parser)
+    _validate_protocol_args(args, parser)
     _validate_perturbation_args(args, parser)
     perturbation_config = PerturbationConfig(
         rate=args.perturb_rate,
@@ -2802,6 +2868,7 @@ def main(argv: list[str] | None = None) -> int:
     log_info(
         "[VitalBench eval] Conditions: "
         + ", ".join(args.conditions)
+        + f" protocol={args.evaluation_protocol}"
         + f" data_mode={args.agent_data_mode}"
         + (" trace_agent=on" if args.trace_agent else "")
         + (
@@ -2922,6 +2989,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         base = {
             "question_id": agent_input.question_id,
+            "evaluation_protocol": args.evaluation_protocol,
             "dataset": locator.dataset,
             "patient_id": locator.patient_id,
             "modality": sample.gt_metadata.get("modality"),
@@ -2951,6 +3019,7 @@ def main(argv: list[str] | None = None) -> int:
                 EvalTraceRecorder(
                     agent_input.question_id,
                     condition="agent",
+                    evaluation_protocol=args.evaluation_protocol,
                     tier=str(sample.gt_metadata.get("tier") or ""),
                     template_id=str(sample.gt_metadata.get("template_id") or ""),
                     target=str(target or ""),
@@ -2968,6 +3037,7 @@ def main(argv: list[str] | None = None) -> int:
                 trace=trace,
                 benchmark_tier=sample.gt_metadata.get("tier"),
                 benchmark_target=str(target or ""),
+                evaluation_protocol=args.evaluation_protocol,
                 perturbation=perturbation_config,
             )
             if trace is not None:
@@ -3031,6 +3101,7 @@ def main(argv: list[str] | None = None) -> int:
                 EvalTraceRecorder(
                     agent_input.question_id,
                     condition=condition_name,
+                    evaluation_protocol=args.evaluation_protocol,
                     tier=str(sample.gt_metadata.get("tier") or ""),
                     template_id=str(sample.gt_metadata.get("template_id") or ""),
                     target=str(target or ""),
@@ -3048,6 +3119,7 @@ def main(argv: list[str] | None = None) -> int:
                 trace=trace,
                 benchmark_tier=sample.gt_metadata.get("tier"),
                 benchmark_target=str(target or ""),
+                evaluation_protocol=args.evaluation_protocol,
                 perturbation=perturbation_config,
                 **run_kwargs,
             )
@@ -3090,11 +3162,12 @@ def main(argv: list[str] | None = None) -> int:
             )
 
         tool_strategy_conditions = (
-            ("agent_no_planner", "random"),
-            ("agent_no_tools", "none"),
-            ("agent_all_tools", "all"),
+            ("agent_no_planner_paper_v1", "random", "paper_v1"),
+            ("agent_no_planner", "random", "rebuttal_v2"),
+            ("agent_no_tools", "none", "rebuttal_v2"),
+            ("agent_all_tools", "all", "rebuttal_v2"),
         )
-        for condition_name, selection_mode in tool_strategy_conditions:
+        for condition_name, selection_mode, no_planner_implementation in tool_strategy_conditions:
             if condition_name not in args.conditions:
                 continue
             condition_started = time.monotonic()
@@ -3113,6 +3186,7 @@ def main(argv: list[str] | None = None) -> int:
                 EvalTraceRecorder(
                     agent_input.question_id,
                     condition=condition_name,
+                    evaluation_protocol=args.evaluation_protocol,
                     tier=str(sample.gt_metadata.get("tier") or ""),
                     template_id=str(sample.gt_metadata.get("template_id") or ""),
                     target=str(target or ""),
@@ -3130,7 +3204,9 @@ def main(argv: list[str] | None = None) -> int:
                 trace=trace,
                 benchmark_tier=sample.gt_metadata.get("tier"),
                 benchmark_target=str(target or ""),
+                evaluation_protocol=args.evaluation_protocol,
                 no_planner_baseline=True,
+                no_planner_implementation=no_planner_implementation,
                 no_planner_selection_mode=selection_mode,
                 no_planner_seed=args.seed,
                 no_planner_tool_count=args.agent_no_planner_tool_count,
@@ -3174,6 +3250,7 @@ def main(argv: list[str] | None = None) -> int:
                     "agent_no_planner_seed": args.seed,
                     "agent_no_planner_tool_count": args.agent_no_planner_tool_count,
                     "agent_no_planner_tool_count_max": args.agent_no_planner_tool_count_max,
+                    "agent_no_planner_implementation": no_planner_implementation,
                     "agent_no_planner_selection_mode": selection_mode,
                 }
             )
@@ -3197,6 +3274,7 @@ def main(argv: list[str] | None = None) -> int:
             f"--perturb-mode {args.perturb_mode}",
             f"--perturb-target {args.perturb_target}",
             f"--perturb-seed {args.perturb_seed}",
+            f"--evaluation-protocol {args.evaluation_protocol}",
             "--conditions " + " ".join(args.conditions),
             f"--output-dir {args.output_dir}",
             *([] if args.dataset is None else [f"--dataset {args.dataset}"]),
@@ -3231,6 +3309,10 @@ def main(argv: list[str] | None = None) -> int:
         "perturb_target": args.perturb_target,
         "perturb_seed": args.perturb_seed,
         "perturbation": perturbation_config.to_dict(),
+        "evaluation_protocol": args.evaluation_protocol,
+        "evaluation_protocol_source": (
+            "main@2ed4008" if args.evaluation_protocol == "paper_v1" else "rebuttal_v2"
+        ),
         "conditions": args.conditions,
         "agent_data_mode": args.agent_data_mode,
         "project_label_generated_state_facts": project_label_generated_state_facts,

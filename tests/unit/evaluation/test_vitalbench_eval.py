@@ -6,6 +6,8 @@ from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from agent.benchmarks.vitalbench.eval_loader import (
     AgentInput,
     EvalSpec,
@@ -484,6 +486,7 @@ def test_predictions_schema_contains_routing_fields(tmp_path: Path) -> None:
     assert rc == 0
     record = json.loads((output_dir / "predictions.jsonl").read_text(encoding="utf-8").splitlines()[0])
     assert "expected_path" in record
+    assert record["evaluation_protocol"] == "rebuttal_v2"
     assert "actual_path" in record
     assert "actual_tools_called" in record
     assert "build_success" in record
@@ -623,6 +626,93 @@ def test_remaining_agent_ablation_conditions_dry_run_write_records(tmp_path: Pat
         "proactive",
     }
     assert "api_key" not in json.dumps(eval_payload["resolved_config"])
+
+
+def test_paper_v1_no_planner_dry_run_records_frozen_protocol(tmp_path: Path) -> None:
+    sample = make_sample()
+    qa_path = tmp_path / "qa.jsonl"
+    states_path = tmp_path / "states.jsonl"
+    manifest_path = tmp_path / "manifest.json"
+    output_dir = tmp_path / "out"
+    qa_path.write_text(json.dumps(sample.to_dict()) + "\n", encoding="utf-8")
+    states_path.write_text("", encoding="utf-8")
+    manifest_path.write_text(
+        json.dumps({"version": "vitalbench_eval_manifest_v0.2", "entries": []}),
+        encoding="utf-8",
+    )
+
+    rc = eval_mod.main(
+        [
+            "--qa-jsonl",
+            str(qa_path),
+            "--states-jsonl",
+            str(states_path),
+            "--source-manifest",
+            str(manifest_path),
+            "--max-samples",
+            "1",
+            "--evaluation-protocol",
+            "paper_v1",
+            "--conditions",
+            "agent_no_planner_paper_v1",
+            "--output-dir",
+            str(output_dir),
+            "--dry-run",
+            "--trace-agent",
+        ]
+    )
+
+    assert rc == 0
+    prediction = json.loads(
+        (output_dir / "predictions.jsonl").read_text(encoding="utf-8")
+    )
+    assert prediction["condition"] == "agent_no_planner_paper_v1"
+    assert prediction["evaluation_protocol"] == "paper_v1"
+    assert prediction["agent_no_planner_implementation"] == "paper_v1"
+    trace = json.loads((output_dir / "agent_traces.jsonl").read_text(encoding="utf-8"))
+    assert trace["evaluation_protocol"] == "paper_v1"
+    eval_payload = json.loads((output_dir / "eval.json").read_text(encoding="utf-8"))
+    assert eval_payload["evaluation_protocol"] == "paper_v1"
+    assert eval_payload["evaluation_protocol_source"] == "main@2ed4008"
+
+
+@pytest.mark.parametrize(
+    "conditions",
+    [
+        ["agent_no_planner"],
+        ["agent_no_tools"],
+        ["agent_all_tools"],
+    ],
+)
+def test_paper_v1_rejects_rebuttal_tool_strategy_conditions(conditions) -> None:
+    with pytest.raises(SystemExit):
+        eval_mod.main(
+            [
+                "--evaluation-protocol",
+                "paper_v1",
+                "--conditions",
+                *conditions,
+            ]
+        )
+
+
+def test_rebuttal_v2_rejects_paper_v1_no_planner_condition() -> None:
+    with pytest.raises(SystemExit):
+        eval_mod.main(["--conditions", "agent_no_planner_paper_v1"])
+
+
+def test_paper_v1_rejects_perturbation() -> None:
+    with pytest.raises(SystemExit):
+        eval_mod.main(
+            [
+                "--evaluation-protocol",
+                "paper_v1",
+                "--conditions",
+                "agent",
+                "--perturb-rate",
+                "0.1",
+            ]
+        )
 
 
 def test_filter_samples_allows_supported_dataset_filter(tmp_path: Path) -> None:
