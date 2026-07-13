@@ -2,6 +2,7 @@
 name = "vital-agent"
 version = "0.1.0"
 description = "VitalAgent — reactive/proactive physiological-signal agent and the VitalBench benchmark"
+license = "MIT"
 requires-python = ">=3.10"
 
 dependencies = [

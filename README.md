@@ -140,6 +140,15 @@ point the matching environment variable at your local copy.
 | `ppg_dalia` | wrist BVP field study | [UCI / PPG-DaLiA](https://archive.ics.uci.edu/dataset/495/ppg+dalia) | `DATASET_PPG_DALIA_ROOT` |
 | `wesad` | chest/wrist wearable | [WESAD](https://archive.ics.uci.edu/dataset/465/wesad+wearable+stress+and+affect+detection) | `DATASET_WESAD_ROOT` |
 
+## License
+
+VitalAgent source code and documentation are licensed under the
+[MIT License](LICENSE). The VitalBench artifacts under `dataset/vitalbench/`
+are licensed separately under
+[CC BY-NC-SA 4.0](dataset/vitalbench/LICENSE) and remain subject to the terms
+and attribution requirements of their source datasets. Raw physiological
+recordings are not redistributed by this repository.
+
 ## Citation
 
 ```bibtex

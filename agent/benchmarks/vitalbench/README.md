@@ -173,3 +173,12 @@ selected.
 
 The shipped `manifest.json` records the original seed, caps, and selection
 method, so the released selection remains auditable.
+
+## License
+
+The VitalAgent source code used to build and evaluate the benchmark is licensed
+under the repository's [MIT License](../../../LICENSE). The released VitalBench
+artifacts are licensed separately under
+[CC BY-NC-SA 4.0](../../../dataset/vitalbench/LICENSE) and remain subject to the
+terms and attribution requirements of the four source datasets. Raw recordings
+are not redistributed here.
