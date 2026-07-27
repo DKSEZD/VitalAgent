@@ -1,6 +1,6 @@
 # VitalAgent: A Tool-Augmented Agent for Reactive and Proactive Physiological Monitoring over Wearable Health Data
 
-[**Project Page**](https://dksezd.github.io/VitalAgent/) | [**Paper**](https://arxiv.org/abs/2605.29483) | [**Benchmark**](agent/benchmarks/vitalbench/README.md)
+[**Benchmark Documentation**](agent/benchmarks/vitalbench/README.md)
 
 Official implementation of the paper *"VitalAgent: A Tool-Augmented Agent for Reactive and Proactive Physiological Monitoring over Wearable Health Data"*.
 
@@ -8,10 +8,6 @@ Official implementation of the paper *"VitalAgent: A Tool-Augmented Agent for Re
 physiological signals for reactive health question answering and proactive
 monitoring. This repository also includes **VitalBench**, the benchmark and
 evaluation pipeline used for longitudinal physiological monitoring.
-
-<p align="center">
-  <img src="docs/overview.svg" alt="VitalAgent system overview" width="900">
-</p>
 
 VitalAgent has two engines:
 
@@ -43,7 +39,6 @@ agent/
   demo/, web_demo.py, chat_ui/   Live web demo
 scripts/vitalbench/   Benchmark build/generate scripts
 dataset/vitalbench/   The released VitalBench benchmark
-docs/                 Static project page with pre-recorded demo traces
 tests/                Unit test suite
 ```
 
@@ -175,14 +170,13 @@ recordings are not redistributed by this repository.
 
 ## Citation
 
+Citation details are withheld during double-blind review.
+
 ```bibtex
-@misc{zhu2026vitalagenttoolaugmentedagentreactive,
+@misc{anonymous2026vitalagent,
       title={VitalAgent: A Tool-Augmented Agent for Reactive and Proactive Physiological Monitoring over Wearable Health Data},
-      author={Di Zhu and Yu Yvonne Wu and Hong Jia and Aaqib Saeed and Vassilis Kostakos and Ting Dang},
+      author={Anonymous Authors},
       year={2026},
-      eprint={2605.29483},
-      archivePrefix={arXiv},
-      primaryClass={cs.AI},
-      url={https://arxiv.org/abs/2605.29483},
+      note={Submitted for anonymous review},
 }
 ```
