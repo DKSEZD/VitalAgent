@@ -5,7 +5,7 @@ __pycache__/
 .venv/
 .env
 .uv-cache/
-
+.runtime/
 # External upstream repos / large model assets (fetched on demand)
 external/
 

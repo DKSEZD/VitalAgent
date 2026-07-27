@@ -179,9 +179,18 @@ class LiveMonitorSession:
         question: str,
         on_status: StatusCallback | None = None,
         history: list[dict[str, Any]] | None = None,
+        intent: str | None = None,
+        alert_offset_s: float | None = None,
+        alert_id: int | None = None,
     ) -> AgentResponse:
         final_response: AgentResponse | None = None
-        for response in self.ask_stream(question, history=history):
+        for response in self.ask_stream(
+            question,
+            history=history,
+            intent=intent,
+            alert_offset_s=alert_offset_s,
+            alert_id=alert_id,
+        ):
             if response.context_used.get("event") == "status":
                 if on_status is not None:
                     on_status(response.answer)
@@ -196,8 +205,17 @@ class LiveMonitorSession:
         self,
         question: str,
         history: list[dict[str, Any]] | None = None,
+        intent: str | None = None,
+        alert_offset_s: float | None = None,
+        alert_id: int | None = None,
     ) -> Iterator[AgentResponse]:
-        """Yield reactive status and answer frames anchored to the live cursor."""
+        """Yield reactive status and answer frames anchored to the live cursor.
+
+        When ``intent`` names a deterministic UI action (e.g. the alert card's
+        ``explain_last_alert``), it is forwarded to the reactive pipeline so the
+        action is routed by design rather than by the LLM planner. ``alert_offset_s``
+        / ``alert_id`` locate the exact alert the user clicked.
+        """
         with self._cond:
             segment_id = self._cursor.segment_id
             end_s = self._cursor.segment_local_end_s
@@ -215,6 +233,12 @@ class LiveMonitorSession:
             "window_start_s": max(0.0, end_s - self.window_seconds),
             "window_end_s": end_s,
         }
+        if intent:
+            active_context["intent"] = intent
+        if alert_offset_s is not None:
+            active_context["alert_offset_s"] = float(alert_offset_s)
+        if alert_id is not None:
+            active_context["alert_id"] = int(alert_id)
         history_block = ""
         if history:
             turns = []

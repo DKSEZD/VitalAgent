@@ -48,6 +48,24 @@ class LiveSessionConflictError(LiveSessionError):
     """Raised when a conflicting start or chat operation is running."""
 
 
+def _optional_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _optional_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _sanitize_json(value: Any) -> Any:
     """Recursively convert payloads to strict browser-safe JSON values."""
     if hasattr(value, "item") and callable(value.item):
@@ -824,6 +842,10 @@ class ChatUIHandler(BaseHTTPRequestHandler):
             if not message:
                 self._send_json({"error": "message is required"}, HTTPStatus.BAD_REQUEST)
                 return
+            intent_raw = payload.get("intent")
+            intent = str(intent_raw).strip() if intent_raw else None
+            alert_offset_s = _optional_float(payload.get("alert_offset_s"))
+            alert_id = _optional_int(payload.get("alert_id"))
             session = live_runtime.acquire_chat_session()
             acquired = True
 
@@ -836,7 +858,13 @@ class ChatUIHandler(BaseHTTPRequestHandler):
 
             final_response = None
             history = live_runtime.chat_history_for_prompt()
-            for response in session.ask_stream(message, history=history):
+            for response in session.ask_stream(
+                message,
+                history=history,
+                intent=intent,
+                alert_offset_s=alert_offset_s,
+                alert_id=alert_id,
+            ):
                 if response.context_used.get("event") == "status":
                     self._send_sse_event({"type": "status", "message": response.answer})
                     continue
