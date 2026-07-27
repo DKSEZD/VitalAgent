@@ -1,6 +1,6 @@
 """Frozen no-planner implementation used for the submitted paper results.
 
-This module intentionally preserves the implementation from ``main@2ed4008``:
+This module intentionally preserves the frozen ``paper_v1`` implementation:
 random tools are drawn from the supplied global pool and the LLM fills arguments
 with one call per selected tool. Rebuttal-only batching, applicable-pool filtering,
 and canonical locator overrides must not be added here.

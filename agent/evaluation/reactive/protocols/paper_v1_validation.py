@@ -6,7 +6,7 @@ from agent.reactive.validation import ValidationGate
 
 
 class PaperV1ValidationGate(ValidationGate):
-    """ValidationGate with the exact tool configuration from ``main@2ed4008``."""
+    """ValidationGate with the exact frozen ``paper_v1`` tool configuration."""
 
     REQUIRED_FIELDS: dict[str, list[str]] = {
         "get_ecg_description": ["description"],

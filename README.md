@@ -42,6 +42,18 @@ dataset/vitalbench/   The released VitalBench benchmark
 tests/                Unit test suite
 ```
 
+## Paper-to-code guide
+
+| Paper content | Main implementation |
+|---|---|
+| Figure 1 and **Method: Overview / System Architecture** | [`agent/reactive/`](agent/reactive/), [`agent/proactive/`](agent/proactive/), [`agent/state/mhealth_state_store.py`](agent/state/mhealth_state_store.py), [`agent/tools/registry.py`](agent/tools/registry.py) |
+| **Method: Physiological Memory / Unified Reasoning Layer** | [`agent/state/`](agent/state/), [`agent/reactive/planner.py`](agent/reactive/planner.py), [`agent/reactive/validation.py`](agent/reactive/validation.py), [`agent/reactive/pipeline.py`](agent/reactive/pipeline.py) |
+| **Method: Tool Interface** and Table 1 | [`agent/tools/`](agent/tools/) |
+| **VitalBench Benchmark** and Tables 2-5 | [`agent/benchmarks/vitalbench/`](agent/benchmarks/vitalbench/), [`agent/mhealth/state_builders/`](agent/mhealth/state_builders/), [`scripts/vitalbench/`](scripts/vitalbench/), [`dataset/vitalbench/final/`](dataset/vitalbench/final/) |
+| **Experiment Setup / Reactive QA Results** and Table 6 | [`agent/evaluation/reactive/vitalbench_eval.py`](agent/evaluation/reactive/vitalbench_eval.py) |
+| **Ablations / Tool-failure Robustness** and Tables 7-8 | [`agent/evaluation/reactive/ablation_no_planner.py`](agent/evaluation/reactive/ablation_no_planner.py), [`agent/reactive/validation.py`](agent/reactive/validation.py), [`agent/evaluation/reactive/vitalbench_eval.py`](agent/evaluation/reactive/vitalbench_eval.py), [`scripts/rebuttal/analyze_mechanism.py`](scripts/rebuttal/analyze_mechanism.py) |
+| **Proactive Monitoring** and Table 9 | [`agent/proactive/`](agent/proactive/), [`agent/evaluation/proactive/`](agent/evaluation/proactive/) |
+
 ## Installation
 
 Requires Python ≥ 3.10 and [uv](https://docs.astral.sh/uv/).
@@ -104,28 +116,28 @@ Reactive conditions: `agent`, `agent_no_validation`, `agent_no_replan`,
 The evaluator uses raw-signal mode by default. Add `--dataset <name>` to filter
 to one dataset, and run `uv run vitalbench-eval --help` for all options.
 
-Two explicit evaluation protocols keep submitted-paper reproduction separate
-from the revised rebuttal experiments:
+Two explicit evaluation protocols keep the clean-data ablation configuration
+separate from the extended robustness experiments:
 
 ```bash
-# Submitted Table 7 protocol. Perturbation and rebuttal-v2 tool strategies are
+# Table 7 clean-data ablation protocol. Perturbation and extended tool strategies are
 # intentionally rejected in this mode.
 uv run vitalbench-eval --evaluation-protocol paper_v1 \
     --conditions agent agent_no_validation agent_no_replan \
     agent_no_planner_paper_v1 --tier A --output-dir ./out/paper_v1
 
-# Revised tool-strategy comparison. This is the default protocol.
+# Extended tool-strategy and perturbation protocol. This is the default.
 uv run vitalbench-eval --evaluation-protocol rebuttal_v2 \
     --conditions agent_no_validation agent_no_planner agent_no_tools \
     agent_all_tools --tier A --output-dir ./out/rebuttal_v2
 ```
 
-`paper_v1` freezes the submitted random-tool selection/argument-filling logic
-and validation configuration from `main@2ed4008`. `rebuttal_v2` uses the
-per-dataset applicable tool pool, batched argument filling, canonical locator
-overrides, and the no-tools/all-tools strategies. Every prediction, trace, and
-`eval.json` records the active protocol; results from the two protocols should
-not be mixed in one comparison table.
+`paper_v1` freezes the original random-tool selection, argument-filling logic,
+and validation configuration. `rebuttal_v2` uses the per-dataset applicable
+tool pool, batched argument filling, canonical locator overrides, and the
+no-tools/all-tools strategies. Every prediction, trace, and `eval.json` records
+the active protocol; results from the two protocols should not be mixed in one
+comparison table.
 
 ### Proactive evaluation
 

@@ -673,7 +673,7 @@ def test_paper_v1_no_planner_dry_run_records_frozen_protocol(tmp_path: Path) -> 
     assert trace["evaluation_protocol"] == "paper_v1"
     eval_payload = json.loads((output_dir / "eval.json").read_text(encoding="utf-8"))
     assert eval_payload["evaluation_protocol"] == "paper_v1"
-    assert eval_payload["evaluation_protocol_source"] == "main@2ed4008"
+    assert eval_payload["evaluation_protocol_source"] == "paper_v1_frozen"
 
 
 @pytest.mark.parametrize(

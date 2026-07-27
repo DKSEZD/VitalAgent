@@ -3311,7 +3311,9 @@ def main(argv: list[str] | None = None) -> int:
         "perturbation": perturbation_config.to_dict(),
         "evaluation_protocol": args.evaluation_protocol,
         "evaluation_protocol_source": (
-            "main@2ed4008" if args.evaluation_protocol == "paper_v1" else "rebuttal_v2"
+            "paper_v1_frozen"
+            if args.evaluation_protocol == "paper_v1"
+            else "rebuttal_v2"
         ),
         "conditions": args.conditions,
         "agent_data_mode": args.agent_data_mode,
