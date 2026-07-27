@@ -102,6 +102,30 @@ def _limit_alerts(alerts: list[dict[str, Any]], limit: int) -> list[dict[str, An
     return alerts[-limit:]
 
 
+def _select_alert(
+    alerts: list[dict[str, Any]],
+    *,
+    offset_s: float | None = None,
+    alert_id: int | None = None,
+) -> dict[str, Any]:
+    """Pick the alert to explain: by stable id, else nearest offset, else latest."""
+    if alert_id is not None:
+        for alert in alerts:
+            if alert.get("alert_id") == alert_id:
+                return alert
+    if offset_s is not None:
+        try:
+            target = float(offset_s)
+        except (TypeError, ValueError):
+            target = None
+        if target is not None:
+            return min(
+                alerts,
+                key=lambda alert: abs(float(alert.get("offset_s") or 0.0) - target),
+            )
+    return alerts[-1]
+
+
 def _alert_explanation(alert: dict[str, Any]) -> dict[str, Any]:
     rules = alert.get("triggered_rules") or []
     matched_label = alert.get("matched_episode_label")
@@ -239,7 +263,14 @@ def proactive_get_recent_alerts(
         },
     },
 )
-def proactive_explain_last_alert(patient_id: str | None = None) -> dict[str, Any]:
+def proactive_explain_last_alert(
+    patient_id: str | None = None,
+    offset_s: float | None = None,
+    alert_id: int | None = None,
+) -> dict[str, Any]:
+    # offset_s / alert_id are optional locators used to explain a SPECIFIC stored
+    # alert (e.g. the exact card the user clicked); when both are omitted this
+    # explains the most recent alert, preserving the original behaviour.
     context, error = _resolve_context(patient_id)
     if error:
         return {"success": False, "error": error}
@@ -249,7 +280,7 @@ def proactive_explain_last_alert(patient_id: str | None = None) -> dict[str, Any
             "success": False,
             "error": "No proactive alerts are stored for this patient context.",
         }
-    alert = alerts[-1]
+    alert = _select_alert(alerts, offset_s=offset_s, alert_id=alert_id)
     return {
         "success": True,
         "patient_id": _context_patient_id(context),

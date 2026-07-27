@@ -84,6 +84,10 @@ _LEAD_PATTERN = re.compile(
     flags=re.IGNORECASE,
 )
 
+# "ST" must be a real ST-segment reference ("ST depression", "ST-T"), not the tail
+# of an ordinary word like "just"/"first"/"must" (which contain "st ").
+_ST_SEGMENT_PATTERN = re.compile(r"\bst[\s-]", flags=re.IGNORECASE)
+
 _CANONICAL_LEADS = {
     "AVR": "aVR",
     "AVL": "aVL",
@@ -114,10 +118,16 @@ class EcgDiagnosisQuestionProfile:
 
 
 def extract_leads_from_query(user_query: str) -> tuple[str, ...]:
+    # Bare "I" is also the English pronoun ("why did I ..."), so only treat it as
+    # lead I when the query actually mentions a lead. Named leads (aVR, V1-6) and
+    # the less ambiguous II/III stay unconditional.
+    has_lead_keyword = "lead" in user_query.lower()
     leads: list[str] = []
     seen: set[str] = set()
     for match in _LEAD_PATTERN.finditer(user_query):
         lead = _CANONICAL_LEADS[match.group(0).upper()]
+        if lead == "I" and not has_lead_keyword:
+            continue
         if lead in seen:
             continue
         seen.add(lead)
@@ -142,24 +152,26 @@ def classify_ecg_diagnosis_question(user_query: str) -> EcgDiagnosisQuestionProf
             or " lead " in query
             or " leads " in query
         )
-        and any(
-            term in query
-            for term in (
-                "symptom",
-                "diagnostic",
-                "form-related",
-                "rhythm-related",
-                "st ",
-                "t-wave",
-                "t wave",
-                "q wave",
-                "q waves",
-                "inverted t",
-                "ischemic",
-                "injury",
-                "infarct",
-                "myocardial infarction",
-                "voltage criteria",
+        and (
+            bool(_ST_SEGMENT_PATTERN.search(query))
+            or any(
+                term in query
+                for term in (
+                    "symptom",
+                    "diagnostic",
+                    "form-related",
+                    "rhythm-related",
+                    "t-wave",
+                    "t wave",
+                    "q wave",
+                    "q waves",
+                    "inverted t",
+                    "ischemic",
+                    "injury",
+                    "infarct",
+                    "myocardial infarction",
+                    "voltage criteria",
+                )
             )
         )
     )

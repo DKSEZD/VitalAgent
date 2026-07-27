@@ -189,6 +189,14 @@ def _apply_ecg_diagnosis_policy(
     if not is_tool_enabled("ecg_diagnosis"):
         return plan
 
+    # The diagnosis policy injects record-based PTB-XL tools (get_ecg_description /
+    # analyze_lead_morphology). Without a resolvable record_id — e.g. live streaming
+    # sessions such as icentia11k that anchor on active_context instead — skip the
+    # policy so we never emit steps that fail on a missing record_id argument.
+    record_id = _infer_record_id_from_steps(plan.steps, active_record_id)
+    if not record_id:
+        return plan
+
     profile = classify_ecg_diagnosis_question(user_query)
     if not profile.is_relevant or profile.trust_level == "none":
         return plan
@@ -208,7 +216,6 @@ def _apply_ecg_diagnosis_policy(
             continue
         remaining_steps.append(step)
 
-    record_id = _infer_record_id_from_steps(plan.steps, active_record_id)
     diagnosis_mode = profile.ecg_diagnosis_mode
     ordered_steps: list[PlanStep] = []
 

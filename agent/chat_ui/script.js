@@ -181,7 +181,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const reason = document.createElement('p');
         reason.textContent = alert.reason || 'Monitoring rule triggered.';
         card.append(top, rules, reason);
-        card.addEventListener('click', () => sendMessage('Why did I just receive an alert?'));
+        card.addEventListener('click', () => sendMessage(
+            `Why did I receive the alert at ${formatTime(alert.offset_s)}?`,
+            { intent: 'explain_last_alert', alert_offset_s: alert.offset_s, alert_id: alert.alert_id },
+        ));
         return card;
     }
 
@@ -206,9 +209,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (alertFeed) alertFeed.classList.toggle('chat-busy', busy);
     }
 
-    async function sendMessage(rawText) {
+    async function sendMessage(rawText, options = {}) {
         const text = String(rawText || '').trim();
         if (!text || chatBusy) return;
+        const intent = options && options.intent ? String(options.intent) : null;
         appendUserMessage(text);
         messageInput.value = '';
         messageInput.style.height = 'auto';
@@ -231,7 +235,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetch('/api/session/chat_stream', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: text }),
+                body: JSON.stringify((() => {
+                    const payload = { message: text };
+                    if (intent) payload.intent = intent;
+                    if (options.alert_offset_s != null) payload.alert_offset_s = options.alert_offset_s;
+                    if (options.alert_id != null) payload.alert_id = options.alert_id;
+                    return payload;
+                })()),
                 signal: chatAbortController.signal,
             });
             if (!response.ok) {

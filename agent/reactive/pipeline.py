@@ -29,7 +29,7 @@ from agent.reactive.previous_window_compare import (
     needs_previous_window_comparison,
 )
 from agent.reactive.validation import ValidationGate, ValidationResult
-from agent.schemas import AgentResponse, IntentType, Plan, ToolResult
+from agent.schemas import AgentResponse, IntentType, Plan, PlanStep, ToolResult
 from agent.tools.registry import call_tool
 
 import agent.tools.datasets.ppg_dalia
@@ -49,6 +49,13 @@ logger = logging.getLogger(__name__)
 
 class ReactivePipeline:
     """End-to-end reactive pipeline: query → plan → tools → validate → answer."""
+
+    # Deterministic UI actions carry an explicit intent in the active context so
+    # routing does not depend on the LLM planner (or fragile keyword matching).
+    # "explain_last_alert" is the live alert card: clicking it must always resolve
+    # the most recent stored proactive alert, regardless of where the monitoring
+    # cursor has scrolled to.
+    EXPLAIN_LAST_ALERT_INTENT = "explain_last_alert"
 
     def __init__(self, client: OpenAI | None = None, llm_service: LLMService | None = None):
         cfg = get_config()
@@ -113,6 +120,12 @@ class ReactivePipeline:
                 active_record_id=active_record_id,
             )
         token_usage = merge_usage(token_usage, planning_usage)
+
+        # Deterministic post-plan routing for explicit UI actions. The planner
+        # still runs for every query; this only overrides tool selection for a
+        # known action (the live alert card) so it never depends on the LLM
+        # picking the right tool — mirroring the _apply_ecg_diagnosis_policy pattern.
+        plan = self._apply_explain_last_alert_policy(plan, active_context)
         all_plans: list[Plan] = [plan]
         yield self._status_response(
             f"✅ Plan ready: {len(plan.steps)} steps. Starting tool execution..."
@@ -435,6 +448,52 @@ class ReactivePipeline:
             resolved_args=resolved,
             active_record_id=active_record_id,
             active_context=active_context,
+        )
+
+    def _apply_explain_last_alert_policy(
+        self,
+        plan: Plan,
+        active_context: dict[str, Any] | None,
+    ) -> Plan:
+        """Deterministically route the live alert card action to the stored-alert tool.
+
+        The planner still runs for every query; this post-plan policy only
+        overrides the tool selection for the explicit ``explain_last_alert`` UI
+        action, so routing never depends on the LLM picking the right tool.
+        """
+        if not active_context:
+            return plan
+        if active_context.get("intent") != self.EXPLAIN_LAST_ALERT_INTENT:
+            return plan
+
+        patient_id = active_context.get("patient_id") or active_context.get("subject_id")
+        tool_args: dict[str, Any] = {}
+        if patient_id is not None:
+            tool_args["patient_id"] = str(patient_id)
+        # Explain the exact alert the user clicked, located by its stable id and/or
+        # its time offset. Falls back to the most recent alert when neither is given.
+        alert_id = active_context.get("alert_id")
+        if alert_id is not None:
+            tool_args["alert_id"] = alert_id
+        alert_offset_s = active_context.get("alert_offset_s")
+        if alert_offset_s is not None:
+            tool_args["offset_s"] = alert_offset_s
+        return Plan(
+            intent=IntentType.ANOMALY_EXPLAIN,
+            reasoning=(
+                "Live alert card action: explain the specific stored proactive alert "
+                "the user clicked (located by id/offset), independent of the current "
+                "monitoring cursor."
+            ),
+            steps=[
+                PlanStep(
+                    step_id=1,
+                    tool_name="proactive_explain_last_alert",
+                    tool_args=tool_args,
+                    description="Retrieve and explain the most recent proactive alert.",
+                )
+            ],
+            original_query=plan.original_query,
         )
 
     @staticmethod
