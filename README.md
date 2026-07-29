@@ -46,13 +46,15 @@ tests/                Unit test suite
 
 | Paper content | Main implementation |
 |---|---|
+| **VitalBench Benchmark: Dataset Sources and Windowing** and Table 1 | [`agent/data/`](agent/data/), [`scripts/vitalbench/download_vitalbench_data.sh`](scripts/vitalbench/download_vitalbench_data.sh), [`agent/benchmarks/vitalbench/README.md`](agent/benchmarks/vitalbench/README.md) |
+| **VitalBench Benchmark: Reactive QA Data Construction** and Tables 2-4 | [`agent/benchmarks/vitalbench/`](agent/benchmarks/vitalbench/), [`agent/mhealth/state_builders/`](agent/mhealth/state_builders/), [`scripts/vitalbench/`](scripts/vitalbench/), [`dataset/vitalbench/final/`](dataset/vitalbench/final/) |
+| **VitalBench Benchmark: Proactive Monitoring Data Construction** | [`agent/data/streaming.py`](agent/data/streaming.py), [`agent/proactive/`](agent/proactive/), [`agent/evaluation/proactive/`](agent/evaluation/proactive/) |
 | Figure 1 and **Method: Overview / System Architecture** | [`agent/reactive/`](agent/reactive/), [`agent/proactive/`](agent/proactive/), [`agent/state/mhealth_state_store.py`](agent/state/mhealth_state_store.py), [`agent/tools/registry.py`](agent/tools/registry.py) |
-| **Method: Physiological Memory / Unified Reasoning Layer** | [`agent/state/`](agent/state/), [`agent/reactive/planner.py`](agent/reactive/planner.py), [`agent/reactive/validation.py`](agent/reactive/validation.py), [`agent/reactive/pipeline.py`](agent/reactive/pipeline.py) |
-| **Method: Tool Interface** and Table 1 | [`agent/tools/`](agent/tools/) |
-| **VitalBench Benchmark** and Tables 2-5 | [`agent/benchmarks/vitalbench/`](agent/benchmarks/vitalbench/), [`agent/mhealth/state_builders/`](agent/mhealth/state_builders/), [`scripts/vitalbench/`](scripts/vitalbench/), [`dataset/vitalbench/final/`](dataset/vitalbench/final/) |
-| **Experiment Setup / Reactive QA Results** and Table 6 | [`agent/evaluation/reactive/vitalbench_eval.py`](agent/evaluation/reactive/vitalbench_eval.py) |
-| **Ablations / Tool-failure Robustness** and Tables 7-8 | [`agent/evaluation/reactive/ablation_no_planner.py`](agent/evaluation/reactive/ablation_no_planner.py), [`agent/reactive/validation.py`](agent/reactive/validation.py), [`agent/evaluation/reactive/vitalbench_eval.py`](agent/evaluation/reactive/vitalbench_eval.py), [`scripts/rebuttal/analyze_mechanism.py`](scripts/rebuttal/analyze_mechanism.py) |
-| **Proactive Monitoring** and Table 9 | [`agent/proactive/`](agent/proactive/), [`agent/evaluation/proactive/`](agent/evaluation/proactive/) |
+| **Method: System Architecture - Physiological Memory / Unified Reasoning Layer** | [`agent/state/`](agent/state/), [`agent/reactive/planner.py`](agent/reactive/planner.py), [`agent/reactive/validation.py`](agent/reactive/validation.py), [`agent/reactive/pipeline.py`](agent/reactive/pipeline.py) |
+| **Method: Tool Interface** and Table 5 | [`agent/tools/`](agent/tools/), [`agent/tools/registry.py`](agent/tools/registry.py) |
+| **Experiment Setup / Results: Performance in Reactive QA** and Table 6 | [`agent/evaluation/reactive/vitalbench_eval.py`](agent/evaluation/reactive/vitalbench_eval.py) |
+| **Results: Ablation / Tool-failure Robustness** and Table 7 | [`agent/evaluation/reactive/ablation_no_planner.py`](agent/evaluation/reactive/ablation_no_planner.py), [`agent/reactive/validation.py`](agent/reactive/validation.py), [`agent/evaluation/reactive/vitalbench_eval.py`](agent/evaluation/reactive/vitalbench_eval.py) |
+| **Results: Proactive Performance** and Table 8 | [`agent/proactive/`](agent/proactive/), [`agent/evaluation/proactive/`](agent/evaluation/proactive/) |
 
 ## Installation
 
