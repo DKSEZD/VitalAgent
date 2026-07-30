@@ -129,13 +129,13 @@ uv run vitalbench-eval --evaluation-protocol paper_v1 \
     agent_no_planner_paper_v1 --tier A --output-dir ./out/paper_v1
 
 # Extended tool-strategy and perturbation protocol. This is the default.
-uv run vitalbench-eval --evaluation-protocol rebuttal_v2 \
+uv run vitalbench-eval --evaluation-protocol supplement_v2 \
     --conditions agent_no_validation agent_no_planner agent_no_tools \
-    agent_all_tools --tier A --output-dir ./out/rebuttal_v2
+    agent_all_tools --tier A --output-dir ./out/supplement_v2
 ```
 
 `paper_v1` freezes the original random-tool selection, argument-filling logic,
-and validation configuration. `rebuttal_v2` uses the per-dataset applicable
+and validation configuration. `supplement_v2` uses the per-dataset applicable
 tool pool, batched argument filling, canonical locator overrides, and the
 no-tools/all-tools strategies. Every prediction, trace, and `eval.json` records
 the active protocol; results from the two protocols should not be mixed in one

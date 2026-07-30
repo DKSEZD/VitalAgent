@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Analyze VitalAgent validation/replan mechanism traces for rebuttal tables."""
+"""Analyze VitalAgent validation/replan mechanism traces for supplementary tables."""
 
 from __future__ import annotations
 

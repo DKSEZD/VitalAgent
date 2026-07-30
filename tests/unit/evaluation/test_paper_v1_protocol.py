@@ -71,13 +71,13 @@ def test_paper_v1_no_planner_preserves_global_pool_and_per_tool_calls(
 
 
 def test_paper_v1_validation_constants_are_frozen_before_raw_tool_additions() -> None:
-    rebuttal_only_tools = {
+    extended_protocol_tools = {
         "analyze_icentia11k_ecg_window_signal",
         "analyze_ppg_dalia_window_signal",
         "analyze_wesad_window_signal",
     }
 
-    assert rebuttal_only_tools.isdisjoint(PaperV1ValidationGate.REQUIRED_FIELDS)
-    assert rebuttal_only_tools.isdisjoint(PaperV1ValidationGate.CRITICAL_TOOLS)
-    assert rebuttal_only_tools <= ValidationGate.REQUIRED_FIELDS.keys()
-    assert rebuttal_only_tools <= ValidationGate.CRITICAL_TOOLS
+    assert extended_protocol_tools.isdisjoint(PaperV1ValidationGate.REQUIRED_FIELDS)
+    assert extended_protocol_tools.isdisjoint(PaperV1ValidationGate.CRITICAL_TOOLS)
+    assert extended_protocol_tools <= ValidationGate.REQUIRED_FIELDS.keys()
+    assert extended_protocol_tools <= ValidationGate.CRITICAL_TOOLS

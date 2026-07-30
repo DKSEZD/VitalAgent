@@ -258,7 +258,7 @@ MODEL_COST_KEYS = (
     "answer_input_tokens",
     "answer_output_tokens",
 )
-EVALUATION_PROTOCOLS = ("paper_v1", "rebuttal_v2")
+EVALUATION_PROTOCOLS = ("paper_v1", "supplement_v2")
 AGENT_LIKE_CONDITIONS = {
     "agent",
     "agent_no_validation",
@@ -2025,11 +2025,11 @@ def run_agent_sample(
     trace: EvalTraceRecorder | None = None,
     benchmark_tier: str | None = None,
     benchmark_target: str | None = None,
-    evaluation_protocol: str = "rebuttal_v2",
+    evaluation_protocol: str = "supplement_v2",
     no_validation_baseline: bool = False,
     no_replan_baseline: bool = False,
     no_planner_baseline: bool = False,
-    no_planner_implementation: str = "rebuttal_v2",
+    no_planner_implementation: str = "supplement_v2",
     no_planner_selection_mode: str = "random",
     no_planner_seed: int = 42,
     no_planner_tool_count: int = 1,
@@ -2727,10 +2727,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--evaluation-protocol",
         choices=EVALUATION_PROTOCOLS,
-        default="rebuttal_v2",
+        default="supplement_v2",
         help=(
             "paper_v1 reproduces the submitted evaluation semantics; "
-            "rebuttal_v2 enables the revised rebuttal protocol."
+            "supplement_v2 enables the extended supplementary protocol."
         ),
     )
     parser.add_argument(
@@ -2826,7 +2826,7 @@ def _validate_protocol_args(
         )
         if incompatible:
             parser.error(
-                "paper_v1 does not support rebuttal-v2 condition(s): "
+                "paper_v1 does not support supplement-v2 condition(s): "
                 + ", ".join(incompatible)
                 + ". Use agent_no_planner_paper_v1 for the submitted random-tool ablation."
             )
@@ -3163,9 +3163,9 @@ def main(argv: list[str] | None = None) -> int:
 
         tool_strategy_conditions = (
             ("agent_no_planner_paper_v1", "random", "paper_v1"),
-            ("agent_no_planner", "random", "rebuttal_v2"),
-            ("agent_no_tools", "none", "rebuttal_v2"),
-            ("agent_all_tools", "all", "rebuttal_v2"),
+            ("agent_no_planner", "random", "supplement_v2"),
+            ("agent_no_tools", "none", "supplement_v2"),
+            ("agent_all_tools", "all", "supplement_v2"),
         )
         for condition_name, selection_mode, no_planner_implementation in tool_strategy_conditions:
             if condition_name not in args.conditions:
@@ -3313,7 +3313,7 @@ def main(argv: list[str] | None = None) -> int:
         "evaluation_protocol_source": (
             "paper_v1_frozen"
             if args.evaluation_protocol == "paper_v1"
-            else "rebuttal_v2"
+            else "supplement_v2"
         ),
         "conditions": args.conditions,
         "agent_data_mode": args.agent_data_mode,

@@ -2,7 +2,7 @@
 
 This module intentionally preserves the frozen ``paper_v1`` implementation:
 random tools are drawn from the supplied global pool and the LLM fills arguments
-with one call per selected tool. Rebuttal-only batching, applicable-pool filtering,
+with one call per selected tool. Extended-protocol batching, applicable-pool filtering,
 and canonical locator overrides must not be added here.
 """
 

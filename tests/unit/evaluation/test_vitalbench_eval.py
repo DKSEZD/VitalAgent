@@ -486,7 +486,7 @@ def test_predictions_schema_contains_routing_fields(tmp_path: Path) -> None:
     assert rc == 0
     record = json.loads((output_dir / "predictions.jsonl").read_text(encoding="utf-8").splitlines()[0])
     assert "expected_path" in record
-    assert record["evaluation_protocol"] == "rebuttal_v2"
+    assert record["evaluation_protocol"] == "supplement_v2"
     assert "actual_path" in record
     assert "actual_tools_called" in record
     assert "build_success" in record
@@ -684,7 +684,7 @@ def test_paper_v1_no_planner_dry_run_records_frozen_protocol(tmp_path: Path) -> 
         ["agent_all_tools"],
     ],
 )
-def test_paper_v1_rejects_rebuttal_tool_strategy_conditions(conditions) -> None:
+def test_paper_v1_rejects_extended_tool_strategy_conditions(conditions) -> None:
     with pytest.raises(SystemExit):
         eval_mod.main(
             [
@@ -696,7 +696,7 @@ def test_paper_v1_rejects_rebuttal_tool_strategy_conditions(conditions) -> None:
         )
 
 
-def test_rebuttal_v2_rejects_paper_v1_no_planner_condition() -> None:
+def test_supplement_v2_rejects_paper_v1_no_planner_condition() -> None:
     with pytest.raises(SystemExit):
         eval_mod.main(["--conditions", "agent_no_planner_paper_v1"])
 

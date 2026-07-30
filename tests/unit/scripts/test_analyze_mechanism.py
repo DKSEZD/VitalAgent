@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from scripts.rebuttal import analyze_mechanism as mod
+from scripts.analysis import analyze_mechanism as mod
 
 
 def _prediction(
